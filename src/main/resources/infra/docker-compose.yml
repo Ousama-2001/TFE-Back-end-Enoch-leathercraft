@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16
+    container_name: projetTfe
+    environment:
+      POSTGRES_DB: enochdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ouss
+    ports:
+      - "5432:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d enochdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: enoch_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8081:80"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dbdata:
