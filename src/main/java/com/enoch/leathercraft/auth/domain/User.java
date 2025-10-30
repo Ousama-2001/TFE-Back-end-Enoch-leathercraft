@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/auth/domain/User.java
 package com.enoch.leathercraft.auth.domain;
 
 import jakarta.persistence.*;
@@ -9,9 +10,13 @@ public class User {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable=false, unique=true) private String username;
-    @Column(nullable=false) private String password;
+    @Column(nullable=false, unique=true)
+    private String username;      // = email
 
-    @Enumerated(EnumType.STRING) @Column(nullable=false)
+    @Column(nullable=false)
+    private String password;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable=false)
     private Role role;
 }

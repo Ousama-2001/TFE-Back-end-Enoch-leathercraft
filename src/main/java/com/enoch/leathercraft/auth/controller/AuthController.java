@@ -1,25 +1,20 @@
+// src/main/java/com/enoch/leathercraft/auth/controller/AuthController.java
 package com.enoch.leathercraft.auth.controller;
 
-import com.enoch.leathercraft.auth.dto.AuthRequest;
 import com.enoch.leathercraft.auth.dto.AuthResponse;
 import com.enoch.leathercraft.auth.dto.RegisterRequest;
 import com.enoch.leathercraft.auth.service.AuthService;
-import org.springframework.http.*;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-@RestController
-@RequestMapping("/api/auth")
+@RestController @RequestMapping("/api/auth") @RequiredArgsConstructor
 public class AuthController {
-    private final AuthService service;
-    public AuthController(AuthService service){ this.service = service; }
+    private final AuthService authService;
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest req){
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.register(req));
-    }
-
-    @PostMapping("/login")
-    public AuthResponse login(@RequestBody AuthRequest req){
-        return service.login(req);
+    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest req) {
+        return ResponseEntity.ok(authService.register(req));
     }
 }

@@ -1,13 +1,11 @@
-// ProductCreateRequest.java
+// src/main/java/com/enoch/leathercraft/dto/ProductCreateRequest.java
 package com.enoch.leathercraft.dto;
-
-import jakarta.validation.constraints.*;
-import lombok.*;
-
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+import jakarta.validation.constraints.*; import lombok.Data;
+import java.math.BigDecimal;
+@Data
 public class ProductCreateRequest {
     @NotBlank private String name;
+    @NotNull private BigDecimal price;
+    @NotNull private Integer stock;
     private String description;
-    @NotNull @PositiveOrZero private Double price;
-    @NotNull @PositiveOrZero private Integer stock;
 }
