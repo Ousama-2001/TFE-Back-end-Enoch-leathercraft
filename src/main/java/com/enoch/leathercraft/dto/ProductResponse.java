@@ -1,9 +1,18 @@
-// src/main/java/com/enoch/leathercraft/dto/ProductResponse.java
 package com.enoch.leathercraft.dto;
-import lombok.Builder; import lombok.Data;
+
+import lombok.*;
 import java.math.BigDecimal;
-@Data @Builder
+
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ProductResponse {
-    private Long id; private String name; private String description;
-    private BigDecimal price; private Integer stock;
+    private Long id;
+    private String sku;
+    private String name;
+    private String slug;
+    private String description;
+    private String material;
+    private BigDecimal price;
+    private String currency;
+    private Integer weightGrams;
+    private Boolean isActive;
 }

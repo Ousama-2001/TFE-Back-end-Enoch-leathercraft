@@ -10,7 +10,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update   # ⚠️ Mets 'update' au début pour créer les tables. Ensuite tu pourras remettre 'validate'.
+      ddl-auto: update   # pour repartir propre; ensuite passe à 'update'
     show-sql: true
     properties:
       hibernate:
@@ -19,15 +19,7 @@ spring:
           time_zone: UTC
 
   flyway:
-    enabled: true
-    locations: classpath:db/migration
-    baseline-on-migrate: true
-
-  freemarker:
-    template-loader-path: classpath:/templates/
-    suffix: .ftl
-    charset: UTF-8
-    cache: false
+    enabled: false            # on désactive Flyway pour le dev simple
 
 springdoc:
   api-docs:
