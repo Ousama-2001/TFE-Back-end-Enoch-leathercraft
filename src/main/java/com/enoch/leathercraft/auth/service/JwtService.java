@@ -1,5 +1,6 @@
 package com.enoch.leathercraft.auth.service;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,16 +31,23 @@ public class JwtService {
                 .claim("role", role)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
-                .signWith(Keys.hmacShaKeyFor(secret))   // HS256
+                .signWith(Keys.hmacShaKeyFor(secret))
                 .compact();
     }
 
-    public String extractSubject(String token) {
+    private Claims extractAllClaims(String token) {
         return Jwts.parser()
                 .verifyWith(Keys.hmacShaKeyFor(secret))
                 .build()
                 .parseSignedClaims(token)
-                .getPayload()
-                .getSubject();
+                .getPayload();
+    }
+
+    public String extractSubject(String token) {
+        return extractAllClaims(token).getSubject();
+    }
+
+    public String extractRole(String token) {
+        return extractAllClaims(token).get("role", String.class);
     }
 }

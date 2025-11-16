@@ -1,8 +1,18 @@
 package com.enoch.leathercraft.auth.dto;
-public record RegisterRequest(
-        String email,
-        String password,
-        String firstName,
-        String lastName,
-        String username   // NEW
-) {}
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class RegisterRequest {
+
+    private String email;
+    private String password;
+
+    private String firstName;
+    private String lastName;
+    private String username;
+}

@@ -1,3 +1,16 @@
+// com.enoch.leathercraft.auth.dto.AuthRequest.java
 package com.enoch.leathercraft.auth.dto;
 
-public record AuthRequest(String email, String password) {}
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class AuthRequest {
+
+    // peut être soit un email soit un pseudo
+    private String identifier;
+    private String password;
+}
