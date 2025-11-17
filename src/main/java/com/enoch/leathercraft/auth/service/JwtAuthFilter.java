@@ -44,7 +44,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
                 // 👉 Spring attend "ROLE_ADMIN" pour hasRole("ADMIN")
-                var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
+                var authorities = List.of(new SimpleGrantedAuthority(role)); // role = "ADMIN"
+
 
                 var authToken = new UsernamePasswordAuthenticationToken(
                         email,
