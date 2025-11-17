@@ -1,4 +1,3 @@
-// com/enoch/leathercraft/auth/service/JwtAuthFilter.java
 package com.enoch.leathercraft.auth.service;
 
 import jakarta.servlet.FilterChain;
@@ -44,10 +43,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
-                // Spring s’attend à "ROLE_ADMIN" / "ROLE_CUSTOMER"
-                var authorities = List.of(
-                        new SimpleGrantedAuthority("ROLE_" + role)
-                );
+                // 👉 Spring attend "ROLE_ADMIN" pour hasRole("ADMIN")
+                var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
 
                 var authToken = new UsernamePasswordAuthenticationToken(
                         email,
@@ -58,7 +55,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         } catch (Exception e) {
-            // token invalide -> on laisse sans auth, les règles de sécurité bloqueront
+            // token invalide -> pas d'authentification, les règles de sécurité feront le reste
         }
 
         filterChain.doFilter(request, response);
