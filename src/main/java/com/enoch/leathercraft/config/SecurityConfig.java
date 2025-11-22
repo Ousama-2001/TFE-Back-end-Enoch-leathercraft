@@ -33,13 +33,15 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // login / register publics
+                        // 🔓 Auth publique (login / register)
                         .requestMatchers("/api/auth/**").permitAll()
-                        // produits publics en lecture
+                        // 🔓 Lecture produits publique
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-                        // routes admin réservées aux ADMIN
+                        // 🔓 PANIER OUVERT (temporaire pour debug / TFE)
+                        .requestMatchers("/api/cart/**").permitAll()
+                        // 🛡️ Back office réservé ADMIN
                         .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
-                        // le reste : authentifié
+                        // le reste doit être authentifié
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
