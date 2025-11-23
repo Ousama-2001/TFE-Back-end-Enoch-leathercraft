@@ -13,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -21,14 +23,10 @@ import java.util.stream.Collectors;
 public class ProductService {
 
     private final ProductRepository repo;
-    private final ProductImageRepository imageRepo; // Injection de l'image repository
+    private final ProductImageRepository imageRepo;
 
-    // La méthode getAll fonctionne maintenant grâce à @EntityGraph dans le Repository
     public List<ProductResponse> getAll() {
-        return repo.findAll()
-                .stream()
-                .map(this::toDto)
-                .toList();
+        return repo.findAll().stream().map(this::toDto).toList();
     }
 
     public ProductResponse getById(Long id) {
@@ -39,7 +37,6 @@ public class ProductService {
 
     @Transactional
     public ProductResponse create(ProductCreateRequest req, String imageUrl) {
-        // 1. Création et mapping des champs de base du Produit
         Product p = Product.builder()
                 .sku(req.getSku())
                 .name(req.getName())
@@ -52,29 +49,25 @@ public class ProductService {
                 .isActive(req.getIsActive() != null ? req.getIsActive() : Boolean.TRUE)
                 .build();
 
-        // 2. Création de l'entité Image
         ProductImage image = ProductImage.builder()
                 .url(imageUrl)
-                .altText(req.getName() + " image")
+                .altText(req.getName())
                 .position(0)
                 .isPrimary(true)
                 .build();
 
-        // 3. Liaison de l'image au produit
         p.addImage(image);
-
-        // 4. Sauvegarde (la cascade dans l'entité Product sauve aussi l'image)
         p = repo.save(p);
-
         return toDto(p);
     }
 
+    // MODIFICATION : Ajout du paramètre imageUrl (peut être null)
     @Transactional
-    public ProductResponse update(Long id, ProductCreateRequest req) {
-        // ... (Pas de changement) ...
+    public ProductResponse update(Long id, ProductCreateRequest req, String newImageUrl) {
         Product existing = repo.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
 
+        // Mise à jour des champs texte
         existing.setSku(req.getSku());
         existing.setName(req.getName());
         existing.setSlug(req.getSlug());
@@ -86,20 +79,38 @@ public class ProductService {
         existing.setIsActive(req.getIsActive() != null ? req.getIsActive() : existing.getIsActive());
         existing.setUpdatedAt(Instant.now());
 
+        // LOGIQUE MISE À JOUR IMAGE
+        if (newImageUrl != null) {
+            // 1. Chercher si une image existe déjà
+            Set<ProductImage> images = existing.getImages();
+
+            if (images != null && !images.isEmpty()) {
+                // On met à jour la première image trouvée (pour simplifier le TFE)
+                ProductImage img = images.iterator().next();
+                img.setUrl(newImageUrl);
+            } else {
+                // Aucune image n'existait, on en crée une
+                ProductImage newImg = ProductImage.builder()
+                        .url(newImageUrl)
+                        .altText(req.getName())
+                        .position(0)
+                        .isPrimary(true)
+                        .build();
+                existing.addImage(newImg);
+            }
+        }
+
         existing = repo.save(existing);
         return toDto(existing);
     }
 
     @Transactional
     public void delete(Long id) {
-        if (!repo.existsById(id)) {
-            throw new EntityNotFoundException("Produit introuvable");
-        }
+        if (!repo.existsById(id)) throw new EntityNotFoundException("Produit introuvable");
         repo.deleteById(id);
     }
 
     private ProductResponse toDto(Product p) {
-        // MODIFICATION: Récupération de l'image pour le DTO
         List<String> imageUrls = p.getImages().stream()
                 .map(ProductImage::getUrl)
                 .collect(Collectors.toList());
