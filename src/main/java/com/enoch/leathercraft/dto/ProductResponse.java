@@ -2,6 +2,7 @@ package com.enoch.leathercraft.dto;
 
 import lombok.*;
 import java.math.BigDecimal;
+import java.util.List; // Import nécessaire
 
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ProductResponse {
@@ -15,4 +16,7 @@ public class ProductResponse {
     private String currency;
     private Integer weightGrams;
     private Boolean isActive;
+
+    // NOUVEAUTÉ : Liste des URLs des images associées au produit
+    private List<String> imageUrls;
 }

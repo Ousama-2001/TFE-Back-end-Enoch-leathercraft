@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "products")
@@ -45,6 +47,25 @@ public class Product {
 
     @Column(name = "updated_at")
     private Instant updatedAt;
+
+    // --- NOUVEAUTÉS POUR LA RELATION IMAGE ---
+
+    // Relation One-to-Many avec ProductImage
+    // CascadeType.ALL assure que lorsque vous sauvez/supprimez le produit, les images associées sont aussi gérées.
+    // orphanRemoval = true assure que si une image est retirée de la collection, elle est supprimée de la DB.
+    // "mappedBy" indique que c'est l'entité ProductImage qui détient la clé étrangère (champ 'product').
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default // Utiliser la valeur par défaut Lombok avec le pattern Builder
+    private Set<ProductImage> images = new HashSet<>();
+
+    // Méthode utilitaire pour maintenir la cohérence bi-directionnelle (bonne pratique JPA)
+    public void addImage(ProductImage image) {
+        images.add(image);
+        image.setProduct(this);
+    }
+
+    // --- FIN NOUVEAUTÉS ---
+
 
     @PrePersist
     void onCreate() { createdAt = updatedAt = Instant.now(); }
