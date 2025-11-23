@@ -38,3 +38,7 @@ app:
   jwt:
     secret: "change-me-to-a-256-bit-secret-at-least-32-bytes-long-1234567890"
     expiration-minutes: 120
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG

@@ -1,12 +1,11 @@
 package com.enoch.leathercraft.dto;
 
 import lombok.Builder;
-import lombok.Getter;
-
+import lombok.Data;
 import java.math.BigDecimal;
 import java.util.List;
 
-@Getter
+@Data
 @Builder
 public class CartResponse {
     private Long cartId;

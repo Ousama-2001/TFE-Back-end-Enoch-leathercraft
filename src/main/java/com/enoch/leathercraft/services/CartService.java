@@ -6,180 +6,183 @@ import com.enoch.leathercraft.dto.CartAddRequest;
 import com.enoch.leathercraft.dto.CartItemResponse;
 import com.enoch.leathercraft.dto.CartResponse;
 import com.enoch.leathercraft.dto.CartUpdateRequest;
-import com.enoch.leathercraft.entities.Cart;
-import com.enoch.leathercraft.entities.CartItem;
-import com.enoch.leathercraft.entities.CartStatus;
-import com.enoch.leathercraft.entities.Product;
-import com.enoch.leathercraft.repository.CartItemRepository;
+import com.enoch.leathercraft.entities.*;
 import com.enoch.leathercraft.repository.CartRepository;
 import com.enoch.leathercraft.repository.ProductRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.List;
+import java.util.ArrayList;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
-@Slf4j
 public class CartService {
 
     private final CartRepository cartRepository;
-    private final CartItemRepository cartItemRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
 
-    // ---------- helpers ----------
-
-    /**
-     * TEMPORAIRE :
-     * On utilise toujours le même utilisateur (par exemple ton admin)
-     * pour le panier, pour éviter les problèmes de SecurityContext/JWT.
-     */
-    private User getFixedUser() {
-        String email = "ousama850@gmail.com"; // 🔴 mets ici un email qui existe dans ta table users
-        return userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new EntityNotFoundException("Utilisateur fixe introuvable: " + email));
-    }
-
-    private Cart getOrCreateOpenCart(User user) {
-        return cartRepository.findByUserAndStatus(user, CartStatus.OPEN)
-                .orElseGet(() -> {
-                    Cart c = new Cart();
-                    c.setUser(user);
-                    c.setStatus(CartStatus.OPEN);
-                    c.setCreatedAt(Instant.now());
-                    c.setUpdatedAt(Instant.now());
-                    return cartRepository.save(c); // INSERT ici => doit être dans une transaction NON read-only
-                });
-    }
-
-    private CartResponse toDto(Cart cart) {
-        List<CartItemResponse> items = cart.getItems().stream()
-                .map(ci -> CartItemResponse.builder()
-                        .productId(ci.getProduct().getId())
-                        .name(ci.getProduct().getName())
-                        .sku(ci.getProduct().getSku())
-                        .unitPrice(ci.getUnitPrice())
-                        .quantity(ci.getQuantity())
-                        .lineTotal(ci.getLineTotal())
-                        .build()
-                )
-                .toList();
-
-        int totalQty = items.stream()
-                .mapToInt(CartItemResponse::getQuantity)
-                .sum();
-
-        BigDecimal totalAmount = items.stream()
-                .map(CartItemResponse::getLineTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        return CartResponse.builder()
-                .cartId(cart.getId())
-                .items(items)
-                .totalQuantity(totalQty)
-                .totalAmount(totalAmount)
-                .build();
-    }
-
-    // ---------- API métier ----------
-
-    // ❌ Surtout PAS readOnly = true ici, on peut créer un panier
+    @Transactional
     public CartResponse getCurrentCart() {
-        User user = getFixedUser();
-        Cart cart = getOrCreateOpenCart(user);
+        User user = getAuthenticatedUser();
+        Cart cart = getOrCreateCart(user);
         return toDto(cart);
     }
 
+    @Transactional
     public CartResponse addItem(CartAddRequest req) {
-        if (req.getQuantity() == null || req.getQuantity() <= 0) {
-            throw new IllegalArgumentException("Quantité invalide");
-        }
-
-        User user = getFixedUser();
-        Cart cart = getOrCreateOpenCart(user);
+        User user = getAuthenticatedUser();
+        Cart cart = getOrCreateCart(user);
 
         Product product = productRepository.findById(req.getProductId())
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
 
-        CartItem item = cart.getItems().stream()
-                .filter(ci -> ci.getProduct().getId().equals(product.getId()))
-                .findFirst()
-                .orElse(null);
+        Optional<CartItem> existingItem = cart.getItems().stream()
+                .filter(item -> item.getProduct().getId().equals(product.getId()))
+                .findFirst();
 
-        if (item == null) {
-            item = new CartItem();
-            item.setCart(cart);
-            item.setProduct(product);
-            item.setQuantity(req.getQuantity());
+        if (existingItem.isPresent()) {
+            // Cas : Le produit est déjà là, on met à jour
+            CartItem item = existingItem.get();
+            int newQuantity = item.getQuantity() + req.getQuantity();
+            item.setQuantity(newQuantity);
+
+            // On met à jour le prix unitaire (au cas où il a changé en base)
             item.setUnitPrice(product.getPrice());
-            item.setLineTotal(
-                    product.getPrice().multiply(BigDecimal.valueOf(req.getQuantity()))
-            );
-            cart.getItems().add(item);
+
+            // On recalcule le total ligne
+            item.setLineTotal(product.getPrice().multiply(BigDecimal.valueOf(newQuantity)));
+
         } else {
-            int newQty = item.getQuantity() + req.getQuantity();
-            item.setQuantity(newQty);
-            item.setLineTotal(
-                    item.getUnitPrice().multiply(BigDecimal.valueOf(newQty))
-            );
+            // Cas : Nouveau produit dans le panier
+            BigDecimal total = product.getPrice().multiply(BigDecimal.valueOf(req.getQuantity()));
+
+            CartItem newItem = CartItem.builder()
+                    .cart(cart)
+                    .product(product)
+                    .quantity(req.getQuantity())
+                    .unitPrice(product.getPrice()) // <--- CORRECTION CRUCIALE ICI
+                    .lineTotal(total)
+                    .build();
+            cart.getItems().add(newItem);
         }
 
-        cart.setUpdatedAt(Instant.now());
         cartRepository.save(cart);
-
         return toDto(cart);
     }
 
+    @Transactional
     public CartResponse updateItem(Long productId, CartUpdateRequest req) {
-        User user = getFixedUser();
-        Cart cart = getOrCreateOpenCart(user);
+        User user = getAuthenticatedUser();
+        Cart cart = getOrCreateCart(user);
 
         CartItem item = cart.getItems().stream()
-                .filter(ci -> ci.getProduct().getId().equals(productId))
+                .filter(i -> i.getProduct().getId().equals(productId))
                 .findFirst()
-                .orElseThrow(() -> new EntityNotFoundException("Ligne de panier introuvable"));
+                .orElseThrow(() -> new EntityNotFoundException("Article non trouvé"));
 
-        int newQty = req.getQuantity() == null ? 0 : req.getQuantity();
+        // Mise à jour quantité
+        item.setQuantity(req.getQuantity());
 
-        if (newQty <= 0) {
-            cart.getItems().remove(item);
-            cartItemRepository.delete(item);
-        } else {
-            item.setQuantity(newQty);
-            item.setLineTotal(
-                    item.getUnitPrice().multiply(BigDecimal.valueOf(newQty))
-            );
-        }
+        // Mise à jour total ligne
+        // Note: on utilise item.getUnitPrice() si on veut garder le prix figé,
+        // ou item.getProduct().getPrice() si on veut le prix actuel. Ici je prends le prix actuel.
+        BigDecimal newTotal = item.getProduct().getPrice().multiply(BigDecimal.valueOf(req.getQuantity()));
+        item.setLineTotal(newTotal);
+        item.setUnitPrice(item.getProduct().getPrice()); // Mise à jour du prix unitaire aussi
 
-        cart.setUpdatedAt(Instant.now());
         cartRepository.save(cart);
-
         return toDto(cart);
     }
 
+    @Transactional
     public CartResponse removeItem(Long productId) {
-        CartUpdateRequest req = new CartUpdateRequest();
-        req.setQuantity(0);
-        return updateItem(productId, req);
+        User user = getAuthenticatedUser();
+        Cart cart = getOrCreateCart(user);
+
+        cart.getItems().removeIf(item -> item.getProduct().getId().equals(productId));
+
+        cartRepository.save(cart);
+        return toDto(cart);
     }
 
-    public CartResponse clearCart() {
-        User user = getFixedUser();
-        Cart cart = getOrCreateOpenCart(user);
+    @Transactional
+    public CartResponse clearCartByCurrentUser() {
+        User user = getAuthenticatedUser();
+        clearCart(user.getEmail());
+        return getCurrentCart();
+    }
+
+    @Transactional
+    public void clearCart(String userEmail) {
+        Cart cart = cartRepository.findByUser_EmailAndStatus(userEmail, CartStatus.OPEN)
+                .orElseThrow(() -> new EntityNotFoundException("Panier introuvable"));
 
         cart.getItems().clear();
-        cartItemRepository.deleteAll(cartItemRepository.findAll()); // à optimiser plus tard
-        cart.setUpdatedAt(Instant.now());
         cartRepository.save(cart);
+    }
 
-        return toDto(cart);
+    // --- PRIVATE HELPERS ---
+
+    private User getAuthenticatedUser() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new EntityNotFoundException("Utilisateur introuvable"));
+    }
+
+    private Cart getOrCreateCart(User user) {
+        return cartRepository.findByUserAndStatus(user, CartStatus.OPEN)
+                .orElseGet(() -> {
+                    Cart newCart = new Cart();
+                    newCart.setUser(user);
+                    newCart.setStatus(CartStatus.OPEN);
+                    newCart.setItems(new ArrayList<>());
+                    return cartRepository.save(newCart);
+                });
+    }
+
+    private CartResponse toDto(Cart cart) {
+        // Calcul du total global
+        double totalAmt = cart.getItems().stream()
+                .mapToDouble(i -> {
+                    // On privilégie le lineTotal stocké, sinon on le calcule
+                    if (i.getLineTotal() != null) return i.getLineTotal().doubleValue();
+                    return i.getProduct().getPrice().doubleValue() * i.getQuantity();
+                })
+                .sum();
+
+        int totalQty = cart.getItems().stream()
+                .mapToInt(CartItem::getQuantity)
+                .sum();
+
+        var itemsDto = cart.getItems().stream().map(item -> {
+            String imgUrl = null;
+            if (item.getProduct().getImages() != null && !item.getProduct().getImages().isEmpty()) {
+                imgUrl = item.getProduct().getImages().iterator().next().getUrl();
+            }
+
+            return CartItemResponse.builder()
+                    .productId(item.getProduct().getId())
+                    .name(item.getProduct().getName())
+                    .sku(item.getProduct().getSku())
+                    .unitPrice(item.getUnitPrice() != null ? item.getUnitPrice() : item.getProduct().getPrice())
+                    .quantity(item.getQuantity())
+                    .lineTotal(item.getLineTotal())
+                    .imageUrl(imgUrl)
+                    .build();
+        }).collect(Collectors.toList());
+
+        return CartResponse.builder()
+                .cartId(cart.getId())
+                .items(itemsDto)
+                .totalQuantity(totalQty)
+                .totalAmount(BigDecimal.valueOf(totalAmt))
+                .build();
     }
 }

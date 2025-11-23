@@ -16,19 +16,16 @@ public class CartController {
 
     private final CartService cartService;
 
-    // GET /api/cart
     @GetMapping
     public ResponseEntity<CartResponse> getCurrentCart() {
         return ResponseEntity.ok(cartService.getCurrentCart());
     }
 
-    // POST /api/cart/items
     @PostMapping("/items")
     public ResponseEntity<CartResponse> addItem(@RequestBody CartAddRequest req) {
         return ResponseEntity.ok(cartService.addItem(req));
     }
 
-    // PATCH /api/cart/items/{productId}
     @PatchMapping("/items/{productId}")
     public ResponseEntity<CartResponse> updateItem(
             @PathVariable Long productId,
@@ -37,24 +34,22 @@ public class CartController {
         return ResponseEntity.ok(cartService.updateItem(productId, req));
     }
 
-    // DELETE /api/cart/items/{productId}
     @DeleteMapping("/items/{productId}")
     public ResponseEntity<CartResponse> removeItem(@PathVariable Long productId) {
         return ResponseEntity.ok(cartService.removeItem(productId));
     }
 
-    // DELETE /api/cart
+    // Vider tout le panier manuellement
     @DeleteMapping
     public ResponseEntity<CartResponse> clearCart() {
-        return ResponseEntity.ok(cartService.clearCart());
+        return ResponseEntity.ok(cartService.clearCartByCurrentUser());
     }
-    // GET /api/cart/debug
+
+    // Endpoint de debug pour vérifier qui est connecté
     @GetMapping("/debug")
     public ResponseEntity<String> debugCart() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        String name = (authentication != null ? authentication.getName() : "null");
-        return ResponseEntity.ok("SecurityContext principal = " + name);
+        String name = (authentication != null) ? authentication.getName() : "null";
+        return ResponseEntity.ok("Utilisateur connecté (Principal) = " + name);
     }
-
-
 }

@@ -1,11 +1,10 @@
 package com.enoch.leathercraft.dto;
 
 import lombok.Builder;
-import lombok.Getter;
-
+import lombok.Data;
 import java.math.BigDecimal;
 
-@Getter
+@Data
 @Builder
 public class CartItemResponse {
     private Long productId;
@@ -14,4 +13,5 @@ public class CartItemResponse {
     private BigDecimal unitPrice;
     private Integer quantity;
     private BigDecimal lineTotal;
+    private String imageUrl; // <-- C'est souvent ce champ qui manque et cause l'erreur
 }

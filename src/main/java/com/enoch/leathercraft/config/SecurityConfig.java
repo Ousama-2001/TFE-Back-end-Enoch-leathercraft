@@ -8,7 +8,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer; // Import Important
+import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,12 +27,6 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
 
-    /**
-     * 🛠️ CORRECTION 403 FORBIDDEN SUR LES IMAGES
-     * Ce bean permet de configurer Spring Security pour qu'il IGNORE totalement
-     * les requêtes vers /uploads/**.
-     * Cela contourne le filtre JWT et résout le problème d'accès aux images.
-     */
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer() {
         return (web) -> web.ignoring().requestMatchers("/uploads/**");
@@ -42,26 +36,23 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                .cors(Customizer.withDefaults()) // Active la config CORS définie plus bas
+                .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // 🔓 Auth publique (login / register)
+                        // Routes publiques
                         .requestMatchers("/api/auth/**").permitAll()
-
-                        // 🔓 Lecture produits publique (Catalogue)
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-
-                        // 🔓 Panier (temporaire pour le développement)
                         .requestMatchers("/api/cart/**").permitAll()
 
-                        // 🛡️ Back office réservé ADMIN
-                        // Note: Assurez-vous que votre UserDetails renvoie bien une autorité nommée "ADMIN"
+                        // --- CORRECTION : Autoriser l'accès aux commandes pour les utilisateurs connectés ---
+                        .requestMatchers("/api/orders/**").authenticated()
+
+                        // Routes Admin
                         .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
 
-                        // 🔒 Tout le reste nécessite une authentification
+                        // Tout le reste doit être authentifié
                         .anyRequest().authenticated()
                 )
-                // Ajout du filtre JWT avant le filtre standard username/password
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable());
@@ -74,19 +65,12 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    /**
-     * Configuration CORS pour autoriser le Frontend Angular (localhost:4200)
-     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();
-        // Autoriser l'origine Angular
         cfg.setAllowedOrigins(List.of("http://localhost:4200"));
-        // Autoriser toutes les méthodes HTTP nécessaires
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        // Autoriser les headers (notamment Authorization pour le JWT)
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
-        // Autoriser l'envoi de credentials (cookies/headers auth)
         cfg.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
