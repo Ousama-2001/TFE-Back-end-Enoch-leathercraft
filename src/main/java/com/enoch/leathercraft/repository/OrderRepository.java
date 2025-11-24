@@ -5,6 +5,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
-    // Trouver toutes les commandes d'un client
+    // Client : Ses commandes
     List<Order> findByCustomerEmailOrderByCreatedAtDesc(String email);
+
+    // Admin : Toutes les commandes (du plus récent au plus vieux)
+    List<Order> findAllByOrderByCreatedAtDesc();
 }

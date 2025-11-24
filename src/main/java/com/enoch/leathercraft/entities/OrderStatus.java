@@ -1,8 +1,9 @@
 package com.enoch.leathercraft.entities;
 
 public enum OrderStatus {
-    PENDING,    // En attente (panier validé)
-    PAID,       // Payée
-    SHIPPED,    // Expédiée
-    CANCELLED   // Annulée
+    PENDING,    // En attente
+    PAID,       // Payé (si tu gères le paiement direct)
+    SHIPPED,    // Expédié
+    DELIVERED,  // Livré (C'est celui-ci qui doit exister pour que le bouton marche)
+    CANCELLED   // Annulé
 }

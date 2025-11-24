@@ -28,7 +28,6 @@ public class OrderService {
     // ------------------------------------------------------
     @Transactional
     public OrderResponse createOrderFromCart(String userEmail) {
-
         Cart cart = cartRepository.findByUser_EmailAndStatus(userEmail, CartStatus.OPEN)
                 .orElseThrow(() -> new EntityNotFoundException("Aucun panier ouvert trouvé pour cet utilisateur"));
 
@@ -44,37 +43,31 @@ public class OrderService {
         BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (CartItem cartItem : cart.getItems()) {
-
             Product product = cartItem.getProduct();
-
             OrderItem orderItem = OrderItem.builder()
                     .product(product)
                     .productName(product.getName())
-                    .unitPrice(product.getPrice()) // prix figé
+                    .unitPrice(product.getPrice())
                     .quantity(cartItem.getQuantity())
                     .build();
 
             BigDecimal lineTotal = product.getPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity()));
             totalAmount = totalAmount.add(lineTotal);
-
             order.addItem(orderItem);
         }
 
         order.setTotalAmount(totalAmount);
-
         Order savedOrder = orderRepository.save(order);
-
         cartService.clearCart(userEmail);
 
         return toDto(savedOrder);
     }
 
     // ------------------------------------------------------
-    // GET USER ORDERS (FIX BUG POSTGRES LOB)
+    // CLIENT : GET USER ORDERS
     // ------------------------------------------------------
-    @Transactional(readOnly = true) // <= FIX CRUCIAL POUR LOB
+    @Transactional(readOnly = true)
     public List<OrderResponse> getUserOrders(String userEmail) {
-
         return orderRepository
                 .findByCustomerEmailOrderByCreatedAtDesc(userEmail)
                 .stream()
@@ -83,10 +76,38 @@ public class OrderService {
     }
 
     // ------------------------------------------------------
+    // ADMIN : GET ALL ORDERS
+    // ------------------------------------------------------
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getAllOrders() {
+        return orderRepository.findAllByOrderByCreatedAtDesc()
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    // ------------------------------------------------------
+    // ADMIN : UPDATE STATUS
+    // ------------------------------------------------------
+    @Transactional
+    public OrderResponse updateStatus(Long orderId, String newStatus) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
+
+        try {
+            // Converts String to Enum, throws IllegalArgumentException if invalid
+            order.setStatus(OrderStatus.valueOf(newStatus));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Statut invalide : " + newStatus);
+        }
+
+        return toDto(orderRepository.save(order));
+    }
+
+    // ------------------------------------------------------
     // DTO MAPPER
     // ------------------------------------------------------
     private OrderResponse toDto(Order order) {
-
         List<OrderItemResponse> itemsDto = order.getItems().stream()
                 .map(item -> OrderItemResponse.builder()
                         .productName(item.getProductName())
