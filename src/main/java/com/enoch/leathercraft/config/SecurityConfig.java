@@ -29,7 +29,7 @@ public class SecurityConfig {
 
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer() {
-        return (web) -> web.ignoring().requestMatchers("/uploads/**");
+        return web -> web.ignoring().requestMatchers("/uploads/**");
     }
 
     @Bean
@@ -39,19 +39,24 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Routes publiques
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-                        .requestMatchers("/api/cart/**").permitAll()
 
-                        // --- CORRECTION : Autoriser l'accès aux commandes pour les utilisateurs connectés ---
+                        // Auth public (login/register)
+                        .requestMatchers("/api/auth/**").permitAll()
+
+                        // Produits ouverts en lecture
+                        .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
+
+                        // Panier : user connecté obligatoire
+                        .requestMatchers("/api/cart/**").authenticated()
+
+                        // Commandes : user connecté obligatoire
                         .requestMatchers("/api/orders/**").authenticated()
 
-                        // Routes Admin
+                        // Admin
                         .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
 
-                        // Tout le reste doit être authentifié
-                        .anyRequest().authenticated()
+                        // Le reste : libre (si tu veux serrer plus, on ajustera)
+                        .anyRequest().permitAll()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .formLogin(form -> form.disable())
