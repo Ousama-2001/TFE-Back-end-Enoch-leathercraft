@@ -8,7 +8,9 @@ import com.enoch.leathercraft.dto.ProfileUpdateRequest;
 import com.enoch.leathercraft.dto.OrderResponse;
 
 
+import com.enoch.leathercraft.services.MailService;
 import com.enoch.leathercraft.services.OrderService;
+import com.enoch.leathercraft.validator.PasswordValidator;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +29,7 @@ public class AccountController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final OrderService orderService;
+    private final MailService mailService; // ⬅️ ajouté
 
     private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -89,15 +92,32 @@ public class AccountController {
     public ResponseEntity<?> changePassword(@RequestBody ChangePasswordRequest request) {
         User user = getCurrentUser();
 
-        // 🔽 Utiliser passwordHash
+        // 1. Vérifier ancien mot de passe
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
-            return ResponseEntity.badRequest().body("Ancien mot de passe incorrect");
+            return ResponseEntity
+                    .badRequest()
+                    .body("Ancien mot de passe incorrect.");
         }
 
+        // 2. Nouveau différent de l'ancien
+        if (passwordEncoder.matches(request.getNewPassword(), user.getPasswordHash())) {
+            return ResponseEntity
+                    .badRequest()
+                    .body("Le nouveau mot de passe doit être différent de l'ancien.");
+        }
+
+        // 3. Complexité
+        if (!PasswordValidator.isStrongPassword(request.getNewPassword())) {
+            return ResponseEntity
+                    .badRequest()
+                    .body("Le mot de passe doit contenir au minimum 8 caractères, une majuscule, un chiffre et un caractère spécial.");
+        }
+
+        // 4. Tout est OK -> on change
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
 
-        return ResponseEntity.ok().build();
+        mailService.sendPasswordChangedEmail(user.getEmail());
+        return ResponseEntity.ok("Mot de passe mis à jour.");
     }
-
 }

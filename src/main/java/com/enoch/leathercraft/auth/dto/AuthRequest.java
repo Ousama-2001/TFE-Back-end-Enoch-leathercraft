@@ -1,6 +1,7 @@
 // com.enoch.leathercraft.auth.dto.AuthRequest.java
 package com.enoch.leathercraft.auth.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,7 +11,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class AuthRequest {
 
-    // peut être soit un email soit un pseudo
+    // On accepte "identifier" ET "email" depuis le JSON
+    @JsonAlias({"identifier", "email"})
     private String identifier;
+
     private String password;
 }

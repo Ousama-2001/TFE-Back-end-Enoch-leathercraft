@@ -7,15 +7,14 @@ spring:
     username: postgres
     password: ouss
     driver-class-name: org.postgresql.Driver
+
   web:
-    # Ceci dit à Spring de chercher les ressources statiques dans le dossier 'uploads'
-    # 'file:./uploads/' fait référence au dossier uploads à la racine du projet Spring Boot
     resources:
       static-locations: "classpath:/static/,file:./uploads/"
-      # Ceci indique à Spring de mapper le chemin de l'URL à votre dossier de fichiers.
+
   jpa:
     hibernate:
-      ddl-auto: update   # pour repartir propre; ensuite passe à 'update'
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
@@ -24,7 +23,19 @@ spring:
           time_zone: UTC
 
   flyway:
-    enabled: false            # on désactive Flyway pour le dev simple
+    enabled: false
+
+  mail:
+    host: smtp.gmail.com        # ou host Mailtrap / autre
+    port: 587
+    username: "saidenoch@gmail.com"          # <-- à remplacer
+    password: "qexm wvao ianm splz" # <-- à remplacer (app password, pas le mdp normal)
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 springdoc:
   api-docs:
@@ -38,6 +49,7 @@ app:
   jwt:
     secret: "change-me-to-a-256-bit-secret-at-least-32-bytes-long-1234567890"
     expiration-minutes: 120
+
 logging:
   level:
     org.springframework.security: DEBUG

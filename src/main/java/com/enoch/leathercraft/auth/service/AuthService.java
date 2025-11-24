@@ -1,4 +1,4 @@
-// com.enoch.leathercraft.auth.service.AuthService.java
+// src/main/java/com/enoch/leathercraft/auth/service/AuthService.java
 package com.enoch.leathercraft.auth.service;
 
 import com.enoch.leathercraft.auth.domain.Role;
@@ -8,8 +8,6 @@ import com.enoch.leathercraft.auth.dto.AuthResponse;
 import com.enoch.leathercraft.auth.dto.RegisterRequest;
 import com.enoch.leathercraft.auth.repo.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +19,7 @@ public class AuthService {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
 
+    // ---------- REGISTER ----------
     public AuthResponse register(RegisterRequest request) {
 
         if (request.getEmail() == null || request.getEmail().isBlank()) {
@@ -58,6 +57,7 @@ public class AuthService {
                 .build();
     }
 
+    // ---------- LOGIN ----------
     public AuthResponse login(AuthRequest request) {
 
         String identifier = request.getIdentifier();
@@ -65,13 +65,13 @@ public class AuthService {
             throw new IllegalArgumentException("IDENTIFIER_REQUIRED");
         }
 
-        User u =
-                users.findByEmail(identifier)
-                        .or(() -> users.findByUsername(identifier))
-                        .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        // On n’expose pas si l’email existe ou pas => message générique
+        User u = users.findByEmail(identifier)
+                .or(() -> users.findByUsername(identifier))
+                .orElseThrow(() -> new IllegalArgumentException("BAD_CREDENTIALS"));
 
         if (!encoder.matches(request.getPassword(), u.getPasswordHash())) {
-            throw new BadCredentialsException("BAD_CREDENTIALS");
+            throw new IllegalArgumentException("BAD_CREDENTIALS");
         }
 
         String token = jwt.generateToken(u.getEmail(), u.getRole().name());
