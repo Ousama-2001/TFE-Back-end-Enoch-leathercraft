@@ -37,6 +37,22 @@ public class User {
     @Column(name = "username", unique = true, length = 50)
     private String username;
 
+    // 🔽 NOUVEAUX CHAMPS PROFIL
+    @Column(name = "phone", length = 20)
+    private String phone;
+
+    @Column(name = "address_line1", length = 255)
+    private String addressLine1;
+
+    @Column(name = "postal_code", length = 20)
+    private String postalCode;
+
+    @Column(name = "city", length = 100)
+    private String city;
+
+    @Column(name = "country", length = 100)
+    private String country;
+
     @Column(name = "created_at", columnDefinition = "timestamp with time zone")
     private Instant createdAt;
 
@@ -54,3 +70,4 @@ public class User {
         updatedAt = Instant.now();
     }
 }
+
