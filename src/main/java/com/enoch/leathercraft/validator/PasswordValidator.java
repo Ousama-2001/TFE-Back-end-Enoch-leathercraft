@@ -1,12 +1,18 @@
 package com.enoch.leathercraft.validator;
 
-public class PasswordValidator {
+import java.util.regex.Pattern;
 
-    // Min 8, 1 maj, 1 chiffre, 1 spécial
-    private static final String STRONG_REGEX =
-            "^(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$";
+public final class PasswordValidator {
 
-    public static boolean isStrongPassword(String password) {
-        return password != null && password.matches(STRONG_REGEX);
+    // Au moins 8 caractères, 1 minuscule, 1 majuscule, 1 chiffre
+    // 👉 pas d'obligation de caractère spécial
+    private static final Pattern PATTERN =
+            Pattern.compile("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$");
+
+    private PasswordValidator() {}
+
+    public static boolean isStrongPassword(String raw) {
+        if (raw == null) return false;
+        return PATTERN.matcher(raw).matches();
     }
 }

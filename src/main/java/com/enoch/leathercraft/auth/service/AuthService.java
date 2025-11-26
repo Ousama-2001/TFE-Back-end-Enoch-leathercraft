@@ -1,4 +1,3 @@
-// src/main/java/com/enoch/leathercraft/auth/service/AuthService.java
 package com.enoch.leathercraft.auth.service;
 
 import com.enoch.leathercraft.auth.domain.Role;
@@ -7,7 +6,10 @@ import com.enoch.leathercraft.auth.dto.AuthRequest;
 import com.enoch.leathercraft.auth.dto.AuthResponse;
 import com.enoch.leathercraft.auth.dto.RegisterRequest;
 import com.enoch.leathercraft.auth.repo.UserRepository;
+import com.enoch.leathercraft.validator.PasswordValidator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -19,7 +21,6 @@ public class AuthService {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
 
-    // ---------- REGISTER ----------
     public AuthResponse register(RegisterRequest request) {
 
         if (request.getEmail() == null || request.getEmail().isBlank()) {
@@ -28,8 +29,9 @@ public class AuthService {
         if (request.getUsername() == null || request.getUsername().isBlank()) {
             throw new IllegalArgumentException("USERNAME_REQUIRED");
         }
-        if (request.getPassword() == null || request.getPassword().length() < 4) {
-            throw new IllegalArgumentException("PASSWORD_TOO_SHORT");
+        if (!PasswordValidator.isStrongPassword(request.getPassword())) {
+            // même règle que pour le changement de mot de passe
+            throw new IllegalArgumentException("WEAK_PASSWORD");
         }
 
         if (users.existsByEmail(request.getEmail())) {
@@ -57,7 +59,6 @@ public class AuthService {
                 .build();
     }
 
-    // ---------- LOGIN ----------
     public AuthResponse login(AuthRequest request) {
 
         String identifier = request.getIdentifier();
@@ -65,13 +66,13 @@ public class AuthService {
             throw new IllegalArgumentException("IDENTIFIER_REQUIRED");
         }
 
-        // On n’expose pas si l’email existe ou pas => message générique
-        User u = users.findByEmail(identifier)
-                .or(() -> users.findByUsername(identifier))
-                .orElseThrow(() -> new IllegalArgumentException("BAD_CREDENTIALS"));
+        User u =
+                users.findByEmail(identifier)
+                        .or(() -> users.findByUsername(identifier))
+                        .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         if (!encoder.matches(request.getPassword(), u.getPasswordHash())) {
-            throw new IllegalArgumentException("BAD_CREDENTIALS");
+            throw new BadCredentialsException("BAD_CREDENTIALS");
         }
 
         String token = jwt.generateToken(u.getEmail(), u.getRole().name());
