@@ -16,4 +16,6 @@ public class ProductCreateRequest {
     private String currency;   // "EUR"
     private Integer weightGrams;
     private Boolean isActive;
+    private Integer stockQuantity;
+
 }

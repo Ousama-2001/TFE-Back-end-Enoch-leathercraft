@@ -2,6 +2,7 @@ package com.enoch.leathercraft.controller;
 
 import com.enoch.leathercraft.dto.ProductCreateRequest;
 import com.enoch.leathercraft.dto.ProductResponse;
+import com.enoch.leathercraft.dto.StockUpdateRequest;
 import com.enoch.leathercraft.services.FileStorageService;
 import com.enoch.leathercraft.services.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/products")
@@ -67,5 +70,19 @@ public class AdminProductController {
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         productService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+    @PutMapping("/{id}/stock")
+    public ProductResponse updateStock(
+            @PathVariable Long id,
+            @RequestBody StockUpdateRequest req
+    ) {
+        return productService.updateStock(id, req.getStockQuantity());
+    }
+
+    @GetMapping("/low-stock")
+    public List<ProductResponse> lowStock(
+            @RequestParam(defaultValue = "5") int threshold
+    ) {
+        return productService.findLowStock(threshold);
     }
 }

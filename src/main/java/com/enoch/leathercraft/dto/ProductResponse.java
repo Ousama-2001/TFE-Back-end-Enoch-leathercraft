@@ -16,7 +16,7 @@ public class ProductResponse {
     private String currency;
     private Integer weightGrams;
     private Boolean isActive;
-
-    // NOUVEAUTÉ : Liste des URLs des images associées au produit
     private List<String> imageUrls;
+    private Integer stockQuantity;
+
 }

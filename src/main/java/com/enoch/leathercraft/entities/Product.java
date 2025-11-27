@@ -47,6 +47,10 @@ public class Product {
 
     @Column(name = "updated_at")
     private Instant updatedAt;
+    // champs
+    @Column(nullable = false)
+    private Integer stockQuantity = 0;
+
 
     // --- NOUVEAUTÉS POUR LA RELATION IMAGE ---
 

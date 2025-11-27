@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -47,6 +46,7 @@ public class ProductService {
                 .currency(req.getCurrency() != null ? req.getCurrency() : "EUR")
                 .weightGrams(req.getWeightGrams())
                 .isActive(req.getIsActive() != null ? req.getIsActive() : Boolean.TRUE)
+                .stockQuantity(req.getStockQuantity() != null ? req.getStockQuantity() : 0)
                 .build();
 
         ProductImage image = ProductImage.builder()
@@ -61,7 +61,6 @@ public class ProductService {
         return toDto(p);
     }
 
-    // MODIFICATION : Ajout du paramètre imageUrl (peut être null)
     @Transactional
     public ProductResponse update(Long id, ProductCreateRequest req, String newImageUrl) {
         Product existing = repo.findById(id)
@@ -79,17 +78,19 @@ public class ProductService {
         existing.setIsActive(req.getIsActive() != null ? req.getIsActive() : existing.getIsActive());
         existing.setUpdatedAt(Instant.now());
 
+        // Stock : si fourni, on remplace, sinon on garde l'ancien
+        if (req.getStockQuantity() != null) {
+            existing.setStockQuantity(req.getStockQuantity());
+        }
+
         // LOGIQUE MISE À JOUR IMAGE
         if (newImageUrl != null) {
-            // 1. Chercher si une image existe déjà
             Set<ProductImage> images = existing.getImages();
 
             if (images != null && !images.isEmpty()) {
-                // On met à jour la première image trouvée (pour simplifier le TFE)
                 ProductImage img = images.iterator().next();
                 img.setUrl(newImageUrl);
             } else {
-                // Aucune image n'existait, on en crée une
                 ProductImage newImg = ProductImage.builder()
                         .url(newImageUrl)
                         .altText(req.getName())
@@ -110,6 +111,25 @@ public class ProductService {
         repo.deleteById(id);
     }
 
+    // ------- STOCK ADMIN (pour modifier uniquement la quantité) -------
+    @Transactional
+    public ProductResponse updateStock(Long productId, Integer newQuantity) {
+        Product p = repo.findById(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
+        p.setStockQuantity(newQuantity != null ? newQuantity : 0);
+        p.setUpdatedAt(Instant.now());
+        p = repo.save(p);
+        return toDto(p);
+    }
+
+    // ------- Produits en stock bas -------
+    public List<ProductResponse> findLowStock(int threshold) {
+        return repo.findAll().stream()
+                .filter(p -> p.getStockQuantity() != null && p.getStockQuantity() <= threshold)
+                .map(this::toDto)
+                .toList();
+    }
+
     private ProductResponse toDto(Product p) {
         List<String> imageUrls = p.getImages().stream()
                 .map(ProductImage::getUrl)
@@ -127,6 +147,7 @@ public class ProductService {
                 .weightGrams(p.getWeightGrams())
                 .isActive(p.getIsActive())
                 .imageUrls(imageUrls)
+                .stockQuantity(p.getStockQuantity())
                 .build();
     }
 }

@@ -5,13 +5,16 @@ import com.enoch.leathercraft.dto.OrderResponse;
 import com.enoch.leathercraft.entities.*;
 import com.enoch.leathercraft.repository.CartRepository;
 import com.enoch.leathercraft.repository.OrderRepository;
+import com.enoch.leathercraft.repository.ProductRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -22,6 +25,9 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
     private final CartService cartService;
+
+    // 👉 pour mettre à jour le stock
+    private final ProductRepository productRepository;
 
     // ------------------------------------------------------
     // CREATE ORDER
@@ -42,22 +48,48 @@ public class OrderService {
 
         BigDecimal totalAmount = BigDecimal.ZERO;
 
+        // Pour stocker les produits dont on met à jour le stock
+        Set<Product> updatedProducts = new HashSet<>();
+
         for (CartItem cartItem : cart.getItems()) {
             Product product = cartItem.getProduct();
+            int quantity = cartItem.getQuantity();
+
+            // --- Vérifier le stock ---
+            int currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+
+            if (currentStock < quantity) {
+                throw new IllegalStateException(
+                        "Stock insuffisant pour le produit : " + product.getName()
+                );
+            }
+
+            // Décrémenter le stock
+            product.setStockQuantity(currentStock - quantity);
+            updatedProducts.add(product);
+
+            // Créer la ligne de commande
             OrderItem orderItem = OrderItem.builder()
                     .product(product)
                     .productName(product.getName())
                     .unitPrice(product.getPrice())
-                    .quantity(cartItem.getQuantity())
+                    .quantity(quantity)
                     .build();
 
-            BigDecimal lineTotal = product.getPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity()));
+            BigDecimal lineTotal = product.getPrice().multiply(BigDecimal.valueOf(quantity));
             totalAmount = totalAmount.add(lineTotal);
             order.addItem(orderItem);
         }
 
         order.setTotalAmount(totalAmount);
+
+        // Sauvegarde commande
         Order savedOrder = orderRepository.save(order);
+
+        // Sauvegarde des produits avec stock mis à jour
+        productRepository.saveAll(updatedProducts);
+
+        // Vider le panier
         cartService.clearCart(userEmail);
 
         return toDto(savedOrder);
@@ -95,7 +127,6 @@ public class OrderService {
                 .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
 
         try {
-            // Converts String to Enum, throws IllegalArgumentException if invalid
             order.setStatus(OrderStatus.valueOf(newStatus));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Statut invalide : " + newStatus);
