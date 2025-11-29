@@ -29,6 +29,7 @@ public class SecurityConfig {
 
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer() {
+        // fichiers statiques (images produits)
         return web -> web.ignoring().requestMatchers("/uploads/**");
     }
 
@@ -40,18 +41,23 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
 
-                        // --- Auth public (login/register) ---
+                        // --- Auth public (login/register, reset pwd, etc.) ---
                         .requestMatchers("/api/auth/**").permitAll()
 
                         // --- Produits ouverts en lecture ---
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
 
+                        // --- Avis produits ---
+                        // Lecture des avis accessible à tous
+                        .requestMatchers(HttpMethod.GET, "/api/product-reviews/**").permitAll()
+                        // Création/modif/suppression d'avis uniquement pour les utilisateurs connectés
+                        .requestMatchers("/api/product-reviews/**").authenticated()
+
                         // --- Panier & commandes : user connecté ---
                         .requestMatchers("/api/cart/**").authenticated()
                         .requestMatchers("/api/orders/**").authenticated()
 
-                        // --- Espace admin (catalogue, commandes, etc.)
-                        // ADMIN + SUPER_ADMIN ont accès
+                        // --- Espace admin (catalogue, commandes, etc.) ---
                         .requestMatchers("/api/admin/**")
                         .hasAnyAuthority("ADMIN", "SUPER_ADMIN")
 
