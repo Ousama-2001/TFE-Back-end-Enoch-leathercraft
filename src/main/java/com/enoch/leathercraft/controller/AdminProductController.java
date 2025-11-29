@@ -71,12 +71,13 @@ public class AdminProductController {
         productService.delete(id);
         return ResponseEntity.noContent().build();
     }
+    // --- Mise à jour du stock (gestion stock admin)
     @PutMapping("/{id}/stock")
     public ProductResponse updateStock(
             @PathVariable Long id,
-            @RequestBody StockUpdateRequest req
+            @RequestParam("quantity") Integer quantity
     ) {
-        return productService.updateStock(id, req.getStockQuantity());
+        return productService.updateStock(id, quantity);
     }
 
     @GetMapping("/low-stock")

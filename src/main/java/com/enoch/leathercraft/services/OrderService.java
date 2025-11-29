@@ -8,6 +8,7 @@ import com.enoch.leathercraft.repository.OrderRepository;
 import com.enoch.leathercraft.repository.ProductRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,9 +26,8 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
     private final CartService cartService;
-
-    // 👉 pour mettre à jour le stock
     private final ProductRepository productRepository;
+    private final MailService mailService;
 
     // ------------------------------------------------------
     // CREATE ORDER
@@ -92,6 +92,9 @@ public class OrderService {
         // Vider le panier
         cartService.clearCart(userEmail);
 
+        // Envoi email de confirmation
+        mailService.sendOrderConfirmation(savedOrder);
+
         return toDto(savedOrder);
     }
 
@@ -107,6 +110,19 @@ public class OrderService {
                 .collect(Collectors.toList());
     }
 
+    // Détail d'une commande pour le client (vérifie l'email)
+    @Transactional(readOnly = true)
+    public OrderResponse getUserOrderById(Long orderId, String userEmail) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
+
+        if (!order.getCustomerEmail().equalsIgnoreCase(userEmail)) {
+            throw new AccessDeniedException("Cette commande n'appartient pas à cet utilisateur");
+        }
+
+        return toDto(order);
+    }
+
     // ------------------------------------------------------
     // ADMIN : GET ALL ORDERS
     // ------------------------------------------------------
@@ -116,6 +132,14 @@ public class OrderService {
                 .stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
+    }
+
+    // Détail commande admin
+    @Transactional(readOnly = true)
+    public OrderResponse getOrderById(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
+        return toDto(order);
     }
 
     // ------------------------------------------------------

@@ -40,23 +40,27 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
 
-                        // Auth public (login/register)
+                        // --- Auth public (login/register) ---
                         .requestMatchers("/api/auth/**").permitAll()
 
-                        // Produits ouverts en lecture
+                        // --- Produits ouverts en lecture ---
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
 
-                        // Panier : user connecté obligatoire
+                        // --- Panier & commandes : user connecté ---
                         .requestMatchers("/api/cart/**").authenticated()
-
-                        // Commandes : user connecté obligatoire
                         .requestMatchers("/api/orders/**").authenticated()
 
-                        // Admin
-                        .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
+                        // --- Espace admin (catalogue, commandes, etc.)
+                        // ADMIN + SUPER_ADMIN ont accès
+                        .requestMatchers("/api/admin/**")
+                        .hasAnyAuthority("ADMIN", "SUPER_ADMIN")
 
-                        // Le reste : libre (si tu veux serrer plus, on ajustera)
-                        .anyRequest().permitAll()
+                        // --- Espace super admin (gestion utilisateurs, rôles, modération forte) ---
+                        .requestMatchers("/api/super-admin/**")
+                        .hasAuthority("SUPER_ADMIN")
+
+                        // --- Tout le reste : user connecté ---
+                        .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .formLogin(form -> form.disable())

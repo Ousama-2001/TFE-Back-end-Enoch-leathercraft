@@ -4,15 +4,20 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 
 @Entity
 @Table(name = "users")
 @Getter
 @Setter
 @NoArgsConstructor
-public class User {
+public class User implements UserDetails {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,20 +42,11 @@ public class User {
     @Column(name = "username", unique = true, length = 50)
     private String username;
 
-    // 🔽 NOUVEAUX CHAMPS PROFIL
-    @Column(name = "phone", length = 20)
+    // ---- Infos profil ----
     private String phone;
-
-    @Column(name = "address_line1", length = 255)
     private String addressLine1;
-
-    @Column(name = "postal_code", length = 20)
     private String postalCode;
-
-    @Column(name = "city", length = 100)
     private String city;
-
-    @Column(name = "country", length = 100)
     private String country;
 
     @Column(name = "created_at", columnDefinition = "timestamp with time zone")
@@ -59,6 +55,7 @@ public class User {
     @Column(name = "updated_at", columnDefinition = "timestamp with time zone")
     private Instant updatedAt;
 
+    // ===== TIMESTAMPS =====
     @PrePersist
     protected void onCreate() {
         createdAt = Instant.now();
@@ -69,5 +66,28 @@ public class User {
     protected void onUpdate() {
         updatedAt = Instant.now();
     }
-}
 
+    // =====================================================================
+    // ====================== SPRING SECURITY CORE =========================
+    // =====================================================================
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return List.of(new SimpleGrantedAuthority(role.name()));
+    }
+
+    @Override
+    public String getPassword() {
+        return this.passwordHash;
+    }
+
+    @Override
+    public String getUsername() {
+        return this.email; // email = identifiant de connexion
+    }
+
+    @Override public boolean isAccountNonExpired() { return true; }
+    @Override public boolean isAccountNonLocked() { return true; }
+    @Override public boolean isCredentialsNonExpired() { return true; }
+    @Override public boolean isEnabled() { return true; }
+}

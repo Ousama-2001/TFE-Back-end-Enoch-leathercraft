@@ -35,4 +35,17 @@ public class OrderController {
         String email = authentication.getName();
         return ResponseEntity.ok(orderService.getUserOrders(email));
     }
+
+    /**
+     * Détail d'une commande appartenant à l'utilisateur connecté
+     * GET /api/orders/{id}
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<OrderResponse> getMyOrderById(
+            Authentication authentication,
+            @PathVariable Long id
+    ) {
+        String email = authentication.getName();
+        return ResponseEntity.ok(orderService.getUserOrderById(id, email));
+    }
 }
