@@ -58,7 +58,7 @@ public class MailService {
         mailSender.send(message);
     }
 
-    // ================== COMMANDE ==================
+    // ================== COMMANDE : CONFIRMATION ==================
 
     public void sendOrderConfirmation(Order order) {
         try {
@@ -72,6 +72,22 @@ public class MailService {
 
         } catch (Exception e) {
             // On ne casse pas la commande si l'email échoue
+            e.printStackTrace();
+        }
+    }
+
+    // ================== COMMANDE : MISE À JOUR STATUT ==================
+
+    public void sendOrderStatusUpdated(Order order) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setTo(order.getCustomerEmail());
+            message.setFrom(from);
+            message.setSubject("Mise à jour de votre commande " + order.getReference());
+            message.setText(buildStatusBody(order));
+
+            mailSender.send(message);
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -96,6 +112,27 @@ public class MailService {
 
         sb.append("\nTotal : ").append(order.getTotalAmount()).append(" €\n\n");
         sb.append("Nous vous tiendrons informé(e) lors de l'expédition.\n\n");
+        sb.append("L'équipe Enoch Leathercraft");
+
+        return sb.toString();
+    }
+
+    private String buildStatusBody(Order order) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Bonjour,\n\n");
+        sb.append("Le statut de votre commande ").append(order.getReference()).append(" a été mis à jour.\n\n");
+        sb.append("Nouveau statut : ").append(order.getStatus()).append("\n\n");
+
+        if (order.getStatus() != null) {
+            switch (order.getStatus()) {
+                case SHIPPED -> sb.append("Votre commande a été expédiée. Elle sera bientôt livrée.\n\n");
+                case DELIVERED -> sb.append("Votre commande est indiquée comme livrée.\n\n");
+                case CANCELLED -> sb.append("Votre commande a été annulée.\n\n");
+                default -> sb.append("");
+            }
+        }
+
+        sb.append("Merci pour votre confiance.\n\n");
         sb.append("L'équipe Enoch Leathercraft");
 
         return sb.toString();

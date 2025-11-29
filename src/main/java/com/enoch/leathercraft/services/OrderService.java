@@ -150,14 +150,24 @@ public class OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
 
+        final OrderStatus statusEnum;
         try {
-            order.setStatus(OrderStatus.valueOf(newStatus));
+            statusEnum = OrderStatus.valueOf(newStatus);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Statut invalide : " + newStatus);
         }
 
-        return toDto(orderRepository.save(order));
+        order.setStatus(statusEnum);
+        Order saved = orderRepository.save(order);
+
+        // Envoi d'un email pour certaines transitions
+        if (statusEnum == OrderStatus.SHIPPED || statusEnum == OrderStatus.DELIVERED) {
+            mailService.sendOrderStatusUpdated(saved);
+        }
+
+        return toDto(saved);
     }
+
 
     // ------------------------------------------------------
     // DTO MAPPER
