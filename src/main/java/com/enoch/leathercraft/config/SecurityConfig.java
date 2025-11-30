@@ -29,7 +29,6 @@ public class SecurityConfig {
 
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer() {
-        // fichiers statiques (images produits)
         return web -> web.ignoring().requestMatchers("/uploads/**");
     }
 
@@ -41,31 +40,30 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
 
-                        // --- Auth public (login/register, reset pwd, etc.) ---
+                        // Auth publique
                         .requestMatchers("/api/auth/**").permitAll()
 
-                        // --- Produits ouverts en lecture ---
+                        // Produits (GET publics)
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
 
-                        // --- Avis produits ---
-                        // Lecture des avis accessible à tous
+                        // Avis produits : GET public
                         .requestMatchers(HttpMethod.GET, "/api/product-reviews/**").permitAll()
-                        // Création/modif/suppression d'avis uniquement pour les utilisateurs connectés
+                        // Les autres opérations (POST/PUT/DELETE) -> user connecté
                         .requestMatchers("/api/product-reviews/**").authenticated()
 
-                        // --- Panier & commandes : user connecté ---
+                        // Panier & commandes
                         .requestMatchers("/api/cart/**").authenticated()
                         .requestMatchers("/api/orders/**").authenticated()
 
-                        // --- Espace admin (catalogue, commandes, etc.) ---
+                        // Admin
                         .requestMatchers("/api/admin/**")
                         .hasAnyAuthority("ADMIN", "SUPER_ADMIN")
 
-                        // --- Espace super admin (gestion utilisateurs, rôles, modération forte) ---
+                        // Super admin
                         .requestMatchers("/api/super-admin/**")
                         .hasAuthority("SUPER_ADMIN")
 
-                        // --- Tout le reste : user connecté ---
+                        // Le reste : authentifié
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

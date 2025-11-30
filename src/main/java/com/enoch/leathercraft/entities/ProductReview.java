@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/entities/ProductReview.java
 package com.enoch.leathercraft.entities;
 
 import com.enoch.leathercraft.auth.domain.User;
@@ -10,9 +11,9 @@ import java.time.Instant;
 @Table(name = "product_reviews")
 @Getter
 @Setter
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class ProductReview {
 
     @Id
@@ -24,28 +25,43 @@ public class ProductReview {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    // Utilisateur qui laisse l'avis (si tu as une entité User)
+    // Auteur (user)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
 
-    // Affichage du nom (au cas où user null ou juste pour simplifier)
+    // Nom affiché
+    @Column(name = "author_name", length = 150)
     private String authorName;
 
-    // Note 1..5
-    @Column(nullable = false)
-    private Integer rating;
+    private int rating; // 1..5
 
-    @Column(length = 2000)
+    @Column(columnDefinition = "text")
     private String comment;
 
-    @Column(nullable = false, updatable = false)
+    // --------- MODÉRATION / SOFT DELETE ---------
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ReviewStatus status = ReviewStatus.VISIBLE;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
+    // --------- DATES ---------
+    @Column(name = "created_at", columnDefinition = "timestamp with time zone")
     private Instant createdAt;
 
+    @Column(name = "updated_at", columnDefinition = "timestamp with time zone")
+    private Instant updatedAt;
+
     @PrePersist
-    public void prePersist() {
-        if (createdAt == null) {
-            createdAt = Instant.now();
-        }
+    void onCreate() {
+        createdAt = Instant.now();
+        updatedAt = createdAt;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
     }
 }
