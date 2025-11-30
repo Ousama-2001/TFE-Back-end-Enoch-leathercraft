@@ -10,7 +10,10 @@ import java.time.Instant;
 public class ProductReviewResponse {
     private Long id;
     private String authorName;
-    private Integer rating;
+    private int rating;
     private String comment;
     private Instant createdAt;
+
+    // true si cet avis appartient à l'utilisateur connecté
+    private boolean mine;
 }

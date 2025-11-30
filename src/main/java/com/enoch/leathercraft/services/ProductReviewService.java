@@ -10,6 +10,7 @@ import com.enoch.leathercraft.repository.ProductRepository;
 import com.enoch.leathercraft.repository.ProductReviewRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,7 +25,7 @@ public class ProductReviewService {
     private final ProductRepository productRepo;
     private final UserRepository userRepo;
 
-    // ================== AJOUTER UN AVIS ==================
+    // ============ CRÉATION ============
     public ProductReviewResponse addReview(String userEmail, ProductReviewCreateRequest req) {
 
         Product product = productRepo.findById(req.getProductId())
@@ -33,62 +34,84 @@ public class ProductReviewService {
         User user = userRepo.findByEmail(userEmail)
                 .orElseThrow(() -> new EntityNotFoundException("Utilisateur introuvable"));
 
-        // Construction d'un nom d'affichage propre
-        String authorName = buildAuthorName(user);
-
         ProductReview review = ProductReview.builder()
                 .product(product)
                 .user(user)
-                .authorName(authorName)
+                .authorName(buildAuthorName(user))
                 .rating(req.getRating())
                 .comment(req.getComment())
                 .build();
 
         review = reviewRepo.save(review);
-        return toDto(review);
+        // L'utilisateur connecté = auteur => mine = true
+        return toDto(review, true);
     }
 
-    // ================== LISTER LES AVIS D'UN PRODUIT ==================
+    // ============ LECTURE ============
     @Transactional(readOnly = true)
-    public List<ProductReviewResponse> getReviewsForProduct(Long productId) {
+    public List<ProductReviewResponse> getReviewsForProduct(Long productId, String currentUserEmail) {
         return reviewRepo.findByProduct_IdOrderByCreatedAtDesc(productId)
                 .stream()
-                .map(this::toDto)
+                .map(r -> {
+                    boolean mine = false;
+                    if (currentUserEmail != null && r.getUser() != null && r.getUser().getEmail() != null) {
+                        mine = currentUserEmail.equalsIgnoreCase(r.getUser().getEmail());
+                    }
+                    return toDto(r, mine);
+                })
                 .toList();
     }
 
-    // ================== HELPERS ==================
+    // ============ MISE À JOUR ============
+    public ProductReviewResponse updateReview(String userEmail,
+                                              Long reviewId,
+                                              ProductReviewCreateRequest req) {
 
-    private String buildAuthorName(User user) {
-        String first = user.getFirstName();
-        String last = user.getLastName();
+        ProductReview review = reviewRepo.findById(reviewId)
+                .orElseThrow(() -> new EntityNotFoundException("Avis introuvable"));
 
-        if ((first != null && !first.isBlank()) || (last != null && !last.isBlank())) {
-            StringBuilder sb = new StringBuilder();
-            if (first != null && !first.isBlank()) {
-                sb.append(first.trim());
-            }
-            if (last != null && !last.isBlank()) {
-                if (sb.length() > 0) sb.append(" ");
-                sb.append(last.trim());
-            }
-            return sb.toString();
+        if (review.getUser() == null || review.getUser().getEmail() == null ||
+                !review.getUser().getEmail().equalsIgnoreCase(userEmail)) {
+            throw new AccessDeniedException("Vous ne pouvez modifier que vos propres avis.");
         }
 
-        if (user.getUsername() != null && !user.getUsername().isBlank()) {
-            return user.getUsername();
-        }
+        review.setRating(req.getRating());
+        review.setComment(req.getComment());
 
-        return user.getEmail();
+        review = reviewRepo.save(review);
+        return toDto(review, true);
     }
 
-    private ProductReviewResponse toDto(ProductReview r) {
+    // ============ SUPPRESSION ============
+    public void deleteReview(String userEmail, Long reviewId) {
+        ProductReview review = reviewRepo.findById(reviewId)
+                .orElseThrow(() -> new EntityNotFoundException("Avis introuvable"));
+
+        if (review.getUser() == null || review.getUser().getEmail() == null ||
+                !review.getUser().getEmail().equalsIgnoreCase(userEmail)) {
+            throw new AccessDeniedException("Vous ne pouvez supprimer que vos propres avis.");
+        }
+
+        reviewRepo.delete(review);
+    }
+
+    // ============ HELPERS ============
+
+    private String buildAuthorName(User user) {
+        String fn = user.getFirstName() != null ? user.getFirstName() : "";
+        String ln = user.getLastName() != null ? user.getLastName() : "";
+        String full = (fn + " " + ln).trim();
+        return full.isEmpty() ? user.getEmail() : full;
+    }
+
+    private ProductReviewResponse toDto(ProductReview r, boolean mine) {
         return ProductReviewResponse.builder()
                 .id(r.getId())
                 .authorName(r.getAuthorName())
                 .rating(r.getRating())
                 .comment(r.getComment())
                 .createdAt(r.getCreatedAt())
+                .mine(mine)
                 .build();
     }
 }

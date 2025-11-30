@@ -21,8 +21,10 @@ public class ProductReviewController {
      * GET /api/product-reviews/product/{productId}
      */
     @GetMapping("/product/{productId}")
-    public List<ProductReviewResponse> getForProduct(@PathVariable Long productId) {
-        return reviewService.getReviewsForProduct(productId);
+    public List<ProductReviewResponse> getForProduct(@PathVariable Long productId,
+                                                     Authentication authentication) {
+        String email = (authentication != null) ? authentication.getName() : null;
+        return reviewService.getReviewsForProduct(productId, email);
     }
 
     /**
@@ -34,5 +36,28 @@ public class ProductReviewController {
                                            @RequestBody ProductReviewCreateRequest request) {
         String email = authentication.getName();
         return reviewService.addReview(email, request);
+    }
+
+    /**
+     * Modifier un avis (propriétaire uniquement)
+     * PUT /api/product-reviews/{id}
+     */
+    @PutMapping("/{id}")
+    public ProductReviewResponse updateReview(Authentication authentication,
+                                              @PathVariable Long id,
+                                              @RequestBody ProductReviewCreateRequest request) {
+        String email = authentication.getName();
+        return reviewService.updateReview(email, id, request);
+    }
+
+    /**
+     * Supprimer un avis (propriétaire uniquement)
+     * DELETE /api/product-reviews/{id}
+     */
+    @DeleteMapping("/{id}")
+    public void deleteReview(Authentication authentication,
+                             @PathVariable Long id) {
+        String email = authentication.getName();
+        reviewService.deleteReview(email, id);
     }
 }
