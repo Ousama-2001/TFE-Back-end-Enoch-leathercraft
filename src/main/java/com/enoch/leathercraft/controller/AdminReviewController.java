@@ -1,4 +1,3 @@
-// src/main/java/com/enoch/leathercraft/controller/AdminReviewController.java
 package com.enoch.leathercraft.controller;
 
 import com.enoch.leathercraft.dto.AdminReviewResponse;
@@ -17,24 +16,25 @@ public class AdminReviewController {
     private final ProductReviewService reviewService;
 
     /**
-     * GET /api/admin/reviews
-     * GET /api/admin/reviews?status=VISIBLE
+     * GET /api/admin/reviews?status=VISIBLE|HIDDEN|DELETED (optionnel)
+     * -> liste des avis pour l'admin
      */
     @GetMapping
     public List<AdminReviewResponse> getAll(
-            @RequestParam(name = "status", required = false) ReviewStatus status
+            @RequestParam(value = "status", required = false) ReviewStatus status
     ) {
+        // si status == null => tous les statuts
         return reviewService.adminGetAll(status);
     }
 
     /**
-     * PATCH /api/admin/reviews/{id}/status/{status}
-     * Exemple : /api/admin/reviews/10/status/HIDDEN
+     * PATCH /api/admin/reviews/{id}/status?status=VISIBLE|HIDDEN|DELETED
+     * -> change le statut d’un avis
      */
-    @PatchMapping("/{id}/status/{status}")
+    @PatchMapping("/{id}/status")
     public AdminReviewResponse changeStatus(
             @PathVariable Long id,
-            @PathVariable ReviewStatus status
+            @RequestParam("status") ReviewStatus status
     ) {
         return reviewService.adminChangeStatus(id, status);
     }
