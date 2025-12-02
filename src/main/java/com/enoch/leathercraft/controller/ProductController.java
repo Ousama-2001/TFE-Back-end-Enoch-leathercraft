@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/controller/ProductController.java
 package com.enoch.leathercraft.controller;
 
 import com.enoch.leathercraft.dto.ProductResponse;

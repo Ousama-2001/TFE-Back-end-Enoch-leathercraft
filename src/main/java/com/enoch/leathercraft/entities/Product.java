@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/entities/Product.java
 package com.enoch.leathercraft.entities;
 
 import jakarta.persistence.*;
@@ -9,10 +10,15 @@ import java.util.Set;
 
 @Entity
 @Table(name = "products")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Product {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(unique = true, length = 100)
@@ -42,38 +48,43 @@ public class Product {
     @Column(name = "is_active")
     private Boolean isActive = true;
 
+    // ✅ Soft delete
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted = false;
+
     @Column(name = "created_at")
     private Instant createdAt;
 
     @Column(name = "updated_at")
     private Instant updatedAt;
-    // champs
+
     @Column(nullable = false)
     private Integer stockQuantity = 0;
 
-
-    // --- NOUVEAUTÉS POUR LA RELATION IMAGE ---
-
-    // Relation One-to-Many avec ProductImage
-    // CascadeType.ALL assure que lorsque vous sauvez/supprimez le produit, les images associées sont aussi gérées.
-    // orphanRemoval = true assure que si une image est retirée de la collection, elle est supprimée de la DB.
-    // "mappedBy" indique que c'est l'entité ProductImage qui détient la clé étrangère (champ 'product').
-    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @Builder.Default // Utiliser la valeur par défaut Lombok avec le pattern Builder
+    // --- RELATION IMAGES ---
+    @OneToMany(
+            mappedBy = "product",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true,
+            fetch = FetchType.LAZY
+    )
+    @Builder.Default
     private Set<ProductImage> images = new HashSet<>();
 
-    // Méthode utilitaire pour maintenir la cohérence bi-directionnelle (bonne pratique JPA)
     public void addImage(ProductImage image) {
         images.add(image);
         image.setProduct(this);
     }
 
-    // --- FIN NOUVEAUTÉS ---
-
-
     @PrePersist
-    void onCreate() { createdAt = updatedAt = Instant.now(); }
+    void onCreate() {
+        Instant now = Instant.now();
+        createdAt = now;
+        updatedAt = now;
+    }
 
     @PreUpdate
-    void onUpdate() { updatedAt = Instant.now(); }
+    void onUpdate() {
+        updatedAt = Instant.now();
+    }
 }

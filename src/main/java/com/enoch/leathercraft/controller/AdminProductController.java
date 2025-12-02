@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/controller/AdminProductController.java
 package com.enoch.leathercraft.controller;
 
 import com.enoch.leathercraft.dto.ProductCreateRequest;
@@ -23,7 +24,7 @@ public class AdminProductController {
     private final FileStorageService fileStorageService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // CREATE (Déjà fonctionnel)
+    // CREATE
     @PostMapping(consumes = {"multipart/form-data"})
     public ResponseEntity<ProductResponse> createProductWithImage(
             @RequestPart("product") String productJson,
@@ -34,30 +35,27 @@ public class AdminProductController {
             ProductResponse response = productService.create(request, imageUrl);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    // UPDATE (MODIFIÉ pour accepter une image optionnelle)
+    // UPDATE (image optionnelle)
     @PutMapping(value = "/{id}", consumes = {"multipart/form-data"})
     public ResponseEntity<ProductResponse> updateProductWithImage(
             @PathVariable Long id,
             @RequestPart("product") String productJson,
-            @RequestPart(value = "file", required = false) MultipartFile file) { // Fichier optionnel
+            @RequestPart(value = "file", required = false) MultipartFile file) {
 
         try {
-            // 1. Désérialiser le JSON
             ProductCreateRequest request = objectMapper.readValue(productJson, ProductCreateRequest.class);
 
-            // 2. Traiter l'image SI elle est présente
             String imageUrl = null;
             if (file != null && !file.isEmpty()) {
                 imageUrl = fileStorageService.storeFile(file);
             }
 
-            // 3. Appeler le service update (qui gérera l'image si imageUrl n'est pas null)
             ProductResponse response = productService.update(id, request, imageUrl);
-
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
@@ -66,12 +64,14 @@ public class AdminProductController {
         }
     }
 
+    // ✅ SOFT DELETE
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         productService.delete(id);
         return ResponseEntity.noContent().build();
     }
-    // --- Mise à jour du stock (gestion stock admin)
+
+    // --- Mise à jour du stock ---
     @PutMapping("/{id}/stock")
     public ProductResponse updateStock(
             @PathVariable Long id,
