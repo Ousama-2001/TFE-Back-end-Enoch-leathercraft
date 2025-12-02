@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/config/SecurityConfig.java
 package com.enoch.leathercraft.config;
 
 import com.enoch.leathercraft.auth.service.JwtAuthFilter;
@@ -51,15 +52,15 @@ public class SecurityConfig {
                         // Les autres opérations (POST/PUT/DELETE) -> user connecté
                         .requestMatchers("/api/product-reviews/**").authenticated()
 
-                        // Panier & commandes
+                        // Panier & commandes (user connecté)
                         .requestMatchers("/api/cart/**").authenticated()
                         .requestMatchers("/api/orders/**").authenticated()
 
-                        // Admin
+                        // Admin (ADMIN + SUPER_ADMIN)
                         .requestMatchers("/api/admin/**")
                         .hasAnyAuthority("ADMIN", "SUPER_ADMIN")
 
-                        // Super admin
+                        // Super admin uniquement
                         .requestMatchers("/api/super-admin/**")
                         .hasAuthority("SUPER_ADMIN")
 

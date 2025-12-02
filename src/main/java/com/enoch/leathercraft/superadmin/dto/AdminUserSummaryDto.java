@@ -1,4 +1,4 @@
-package com.enoch.leathercraft.dto;
+package com.enoch.leathercraft.superadmin.dto;
 
 import com.enoch.leathercraft.auth.domain.Role;
 import com.enoch.leathercraft.auth.domain.User;
@@ -14,7 +14,6 @@ public record AdminUserSummaryDto(
         Role role,
         Instant createdAt
 ) {
-
     public static AdminUserSummaryDto fromEntity(User u) {
         return new AdminUserSummaryDto(
                 u.getId(),

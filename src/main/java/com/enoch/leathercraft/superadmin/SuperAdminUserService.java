@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/superadmin/SuperAdminUserService.java
 package com.enoch.leathercraft.superadmin;
 
 import com.enoch.leathercraft.auth.domain.Role;
@@ -18,12 +19,14 @@ public class SuperAdminUserService {
     private final UserRepository userRepository;
 
     /**
-     * Liste tous les utilisateurs (pour la page d'administration)
+     * Liste tous les utilisateurs (soft-delete inclus ou non selon ton choix)
      */
     @Transactional(readOnly = true)
     public List<UserAdminDto> findAllUsers() {
+        // ici je prends tous les users non soft-deleted
         return userRepository.findAll()
                 .stream()
+                .filter(u -> !u.isDeleted())
                 .map(UserAdminDto::fromEntity)
                 .toList();
     }
@@ -36,28 +39,38 @@ public class SuperAdminUserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("Utilisateur introuvable"));
 
+        if (user.isDeleted()) {
+            throw new IllegalStateException("Cet utilisateur est supprimé (soft delete).");
+        }
+
         // Sécurité : ne pas permettre à un super admin de modifier son propre rôle
         if (user.getEmail().equalsIgnoreCase(currentEmail)) {
             throw new IllegalStateException("Vous ne pouvez pas modifier votre propre rôle.");
         }
 
         user.setRole(newRole);
+        userRepository.save(user);
+
         return UserAdminDto.fromEntity(user);
     }
 
     /**
-     * Supprime un utilisateur (sauf soi-même)
+     * Soft delete utilisateur (sauf soi-même)
      */
     @Transactional
-    public void deleteUser(Long userId, String currentEmail) {
+    public void softDeleteUser(Long userId, String currentEmail) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("Utilisateur introuvable"));
 
-        // Sécurité : ne pas se supprimer soi-même
         if (user.getEmail().equalsIgnoreCase(currentEmail)) {
             throw new IllegalStateException("Vous ne pouvez pas supprimer votre propre compte.");
         }
 
-        userRepository.delete(user);
+        if (user.isDeleted()) {
+            return; // déjà supprimé
+        }
+
+        user.setDeleted(true);
+        userRepository.save(user);
     }
 }

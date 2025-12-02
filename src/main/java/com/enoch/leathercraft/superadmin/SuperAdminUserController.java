@@ -1,12 +1,15 @@
-package com.enoch.leathercraft.controller;
+// src/main/java/com/enoch/leathercraft/controller/SuperAdminUserController.java
+package com.enoch.leathercraft.superadmin;
 
 import com.enoch.leathercraft.auth.domain.Role;
-import com.enoch.leathercraft.auth.domain.User;
-import com.enoch.leathercraft.auth.repo.UserRepository;
-import com.enoch.leathercraft.dto.AdminUserSummaryDto;
+import com.enoch.leathercraft.superadmin.SuperAdminUserService;
+import com.enoch.leathercraft.superadmin.dto.AdminUserSummaryDto;
+import com.enoch.leathercraft.superadmin.dto.UpdateUserRoleRequest;
+import com.enoch.leathercraft.superadmin.dto.UserAdminDto;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,62 +19,46 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SuperAdminUserController {
 
-    private final UserRepository userRepository;
+    private final SuperAdminUserService superAdminUserService;
 
     /**
      * GET /api/super-admin/users
-     * Liste tous les utilisateurs
+     * Liste tous les utilisateurs non supprimés
      */
     @GetMapping
-    public ResponseEntity<List<AdminUserSummaryDto>> getAllUsers() {
-        List<AdminUserSummaryDto> users = userRepository.findAll().stream()
-                .map(AdminUserSummaryDto::fromEntity)
-                .toList();
-
+    public ResponseEntity<List<UserAdminDto>> getAllUsers() {
+        List<UserAdminDto> users = superAdminUserService.findAllUsers();
         return ResponseEntity.ok(users);
     }
 
     /**
-     * GET /api/super-admin/users/{id}
-     */
-    @GetMapping("/{id}")
-    public ResponseEntity<AdminUserSummaryDto> getUser(@PathVariable Long id) {
-        User u = userRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Utilisateur introuvable"));
-
-        return ResponseEntity.ok(AdminUserSummaryDto.fromEntity(u));
-    }
-
-    /**
-     * PATCH /api/super-admin/users/{id}/role?value=ADMIN
-     * Change le rôle d'un utilisateur
+     * PATCH /api/super-admin/users/{id}/role
+     * Body JSON : { "role": "ADMIN" }
      */
     @PatchMapping("/{id}/role")
-    public ResponseEntity<AdminUserSummaryDto> changeRole(
+    public ResponseEntity<UserAdminDto> changeRole(
             @PathVariable Long id,
-            @RequestParam("value") String value
+            @RequestBody UpdateUserRoleRequest request,
+            Authentication authentication
     ) {
-        User u = userRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Utilisateur introuvable"));
+        String currentEmail = authentication.getName();
+        Role newRole = Role.valueOf(request.role().toUpperCase());
 
-        Role newRole = Role.valueOf(value.toUpperCase()); // CUSTOMER, ADMIN, SUPER_ADMIN
-
-        u.setRole(newRole);
-        userRepository.save(u);
-
-        return ResponseEntity.ok(AdminUserSummaryDto.fromEntity(u));
+        UserAdminDto dto = superAdminUserService.updateUserRole(id, newRole, currentEmail);
+        return ResponseEntity.ok(dto);
     }
 
     /**
      * DELETE /api/super-admin/users/{id}
-     * Pour l'instant : hard delete (on pourra passer en soft delete plus tard si tu veux)
+     * -> soft delete
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
-        if (!userRepository.existsById(id)) {
-            throw new EntityNotFoundException("Utilisateur introuvable");
-        }
-        userRepository.deleteById(id);
+    public ResponseEntity<Void> softDelete(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        String currentEmail = authentication.getName();
+        superAdminUserService.softDeleteUser(id, currentEmail);
         return ResponseEntity.noContent().build();
     }
 }

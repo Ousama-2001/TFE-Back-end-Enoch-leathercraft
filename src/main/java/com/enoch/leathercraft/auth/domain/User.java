@@ -49,6 +49,10 @@ public class User implements UserDetails {
     private String city;
     private String country;
 
+    // ✅ Nouveau champ pour soft delete
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted = false;
+
     @Column(name = "created_at", columnDefinition = "timestamp with time zone")
     private Instant createdAt;
 
