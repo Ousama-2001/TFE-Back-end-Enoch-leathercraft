@@ -12,19 +12,22 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     Optional<Product> findBySlug(String slug);
 
+    // Charge toujours les images avec les produits
     @Override
     @EntityGraph(attributePaths = {"images"})
     List<Product> findAll();
 
-    // ✅ Un produit non supprimé par id
+    // 🌟 Pour le catalogue public / admin "classique"
+    @EntityGraph(attributePaths = {"images"})
+    List<Product> findByIsActiveTrueAndDeletedFalseOrderByNameAsc();
+
     @EntityGraph(attributePaths = {"images"})
     Optional<Product> findByIdAndDeletedFalse(Long id);
 
-    // ✅ Tous les produits non supprimés
     @EntityGraph(attributePaths = {"images"})
     List<Product> findByDeletedFalse();
 
-    // ✅ Produits visibles dans le catalogue
+    // 🌟 Pour l'écran "Produits archivés"
     @EntityGraph(attributePaths = {"images"})
-    List<Product> findByIsActiveTrueAndDeletedFalseOrderByNameAsc();
+    List<Product> findByDeletedTrueOrderByUpdatedAtDesc();
 }

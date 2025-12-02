@@ -25,7 +25,7 @@ public class ProductService {
     private final ProductRepository repo;
     private final ProductImageRepository imageRepo;
 
-    // === CATALOGUE PUBLIC (et admin qui utilise /api/products) ===
+    // === CATALOGUE PUBLIC (et admin via /api/products) ===
     public List<ProductResponse> getAll() {
         return repo.findByIsActiveTrueAndDeletedFalseOrderByNameAsc()
                 .stream()
@@ -92,6 +92,7 @@ public class ProductService {
         );
         existing.setUpdatedAt(Instant.now());
 
+        // Stock si fourni
         if (req.getStockQuantity() != null) {
             existing.setStockQuantity(req.getStockQuantity());
         }
@@ -149,6 +150,28 @@ public class ProductService {
                 .filter(p -> p.getStockQuantity() != null && p.getStockQuantity() <= threshold)
                 .map(this::toDto)
                 .toList();
+    }
+
+    // === ✅ Produits archivés (soft deleted) ===
+    public List<ProductResponse> getArchived() {
+        return repo.findByDeletedTrueOrderByUpdatedAtDesc()
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    // === ✅ Restaurer un produit archivé ===
+    @Transactional
+    public ProductResponse restore(Long id) {
+        Product p = repo.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
+
+        p.setDeleted(false);
+        p.setIsActive(true); // on le remet actif
+        p.setUpdatedAt(Instant.now());
+
+        p = repo.save(p);
+        return toDto(p);
     }
 
     // === Mapping vers DTO ===

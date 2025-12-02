@@ -3,7 +3,6 @@ package com.enoch.leathercraft.controller;
 
 import com.enoch.leathercraft.dto.ProductCreateRequest;
 import com.enoch.leathercraft.dto.ProductResponse;
-import com.enoch.leathercraft.dto.StockUpdateRequest;
 import com.enoch.leathercraft.services.FileStorageService;
 import com.enoch.leathercraft.services.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -69,6 +68,18 @@ public class AdminProductController {
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         productService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // ✅ Produits archivés (soft deleted)
+    @GetMapping("/archived")
+    public List<ProductResponse> getArchived() {
+        return productService.getArchived();
+    }
+
+    // ✅ Restaurer un produit archivé
+    @PatchMapping("/{id}/restore")
+    public ProductResponse restore(@PathVariable Long id) {
+        return productService.restore(id);
     }
 
     // --- Mise à jour du stock ---
