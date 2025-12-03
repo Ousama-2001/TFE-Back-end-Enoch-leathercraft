@@ -2,11 +2,8 @@
 package com.enoch.leathercraft.superadmin;
 
 import com.enoch.leathercraft.auth.domain.Role;
-import com.enoch.leathercraft.superadmin.SuperAdminUserService;
-import com.enoch.leathercraft.superadmin.dto.AdminUserSummaryDto;
 import com.enoch.leathercraft.superadmin.dto.UpdateUserRoleRequest;
 import com.enoch.leathercraft.superadmin.dto.UserAdminDto;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -23,7 +20,7 @@ public class SuperAdminUserController {
 
     /**
      * GET /api/super-admin/users
-     * Liste tous les utilisateurs non supprimés
+     * Liste tous les utilisateurs (actifs + soft-deleted)
      */
     @GetMapping
     public ResponseEntity<List<UserAdminDto>> getAllUsers() {
@@ -50,15 +47,16 @@ public class SuperAdminUserController {
 
     /**
      * DELETE /api/super-admin/users/{id}
-     * -> soft delete
+     * -> soft delete, renvoie l'utilisateur soft-deleted
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> softDelete(
+    public ResponseEntity<UserAdminDto> softDelete(
             @PathVariable Long id,
             Authentication authentication
     ) {
         String currentEmail = authentication.getName();
-        superAdminUserService.softDeleteUser(id, currentEmail);
-        return ResponseEntity.noContent().build();
+        UserAdminDto dto = superAdminUserService.softDeleteUser(id, currentEmail);
+        // 🔹 200 OK + JSON -> plus de "Nothing to write: null body"
+        return ResponseEntity.ok(dto);
     }
 }

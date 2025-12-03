@@ -19,14 +19,13 @@ public class SuperAdminUserService {
     private final UserRepository userRepository;
 
     /**
-     * Liste tous les utilisateurs (soft-delete inclus ou non selon ton choix)
+     * Liste tous les utilisateurs (y compris ceux soft-deleted)
      */
     @Transactional(readOnly = true)
     public List<UserAdminDto> findAllUsers() {
-        // ici je prends tous les users non soft-deleted
+        // 🔹 on NE filtre plus sur deleted, on veut tout voir côté super admin
         return userRepository.findAll()
                 .stream()
-                .filter(u -> !u.isDeleted())
                 .map(UserAdminDto::fromEntity)
                 .toList();
     }
@@ -58,7 +57,7 @@ public class SuperAdminUserService {
      * Soft delete utilisateur (sauf soi-même)
      */
     @Transactional
-    public void softDeleteUser(Long userId, String currentEmail) {
+    public UserAdminDto softDeleteUser(Long userId, String currentEmail) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("Utilisateur introuvable"));
 
@@ -66,11 +65,12 @@ public class SuperAdminUserService {
             throw new IllegalStateException("Vous ne pouvez pas supprimer votre propre compte.");
         }
 
-        if (user.isDeleted()) {
-            return; // déjà supprimé
+        if (!user.isDeleted()) {
+            user.setDeleted(true);
+            userRepository.save(user);
         }
 
-        user.setDeleted(true);
-        userRepository.save(user);
+        // 🔹 on renvoie toujours l'utilisateur (avec deleted=true)
+        return UserAdminDto.fromEntity(user);
     }
 }

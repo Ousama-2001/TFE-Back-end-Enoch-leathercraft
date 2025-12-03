@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/superadmin/dto/UserAdminDto.java
 package com.enoch.leathercraft.superadmin.dto;
 
 import com.enoch.leathercraft.auth.domain.Role;
@@ -12,7 +13,8 @@ public record UserAdminDto(
         String firstName,
         String lastName,
         Role role,
-        Instant createdAt
+        Instant createdAt,
+        boolean deleted
 ) {
     public static UserAdminDto fromEntity(User u) {
         return new UserAdminDto(
@@ -22,7 +24,8 @@ public record UserAdminDto(
                 u.getFirstName(),
                 u.getLastName(),
                 u.getRole(),
-                u.getCreatedAt()
+                u.getCreatedAt(),
+                u.isDeleted()
         );
     }
 }
