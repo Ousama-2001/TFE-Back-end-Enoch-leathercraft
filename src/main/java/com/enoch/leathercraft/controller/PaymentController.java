@@ -39,4 +39,14 @@ public class PaymentController {
 
         return ResponseEntity.ok(response);
     }
+
+    // 🔹 Confirmation après retour de Stripe (avec session_id)
+    @PostMapping("/stripe-confirm")
+    public ResponseEntity<OrderResponse> confirmStripePayment(
+            @RequestParam("session_id") String sessionId
+    ) throws StripeException {
+
+        OrderResponse order = orderService.markOrderAsPaidFromStripeSession(sessionId);
+        return ResponseEntity.ok(order);
+    }
 }

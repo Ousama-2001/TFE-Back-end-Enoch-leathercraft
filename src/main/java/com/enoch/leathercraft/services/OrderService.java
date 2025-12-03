@@ -7,6 +7,8 @@ import com.enoch.leathercraft.entities.*;
 import com.enoch.leathercraft.repository.CartRepository;
 import com.enoch.leathercraft.repository.OrderRepository;
 import com.enoch.leathercraft.repository.ProductRepository;
+import com.stripe.exception.StripeException;
+import com.stripe.model.checkout.Session;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
@@ -31,7 +33,7 @@ public class OrderService {
     private final MailService mailService;
 
     // ------------------------------------------------------
-    // CREATE ORDER
+    // CREATE ORDER (SANS ENVOYER L'EMAIL ICI)
     // ------------------------------------------------------
     @Transactional
     public OrderResponse createOrderFromCart(String userEmail, CheckoutRequest checkoutRequest) {
@@ -46,7 +48,7 @@ public class OrderService {
         order.setReference("CMD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
         order.setCustomerEmail(userEmail); // email du compte
 
-        // 🔹 Infos de checkout
+        // 🔹 Infos de checkout (si tu as ajouté ces champs dans l'entité Order)
         if (checkoutRequest != null) {
             order.setFirstName(checkoutRequest.firstName());
             order.setLastName(checkoutRequest.lastName());
@@ -56,7 +58,6 @@ public class OrderService {
             order.setCity(checkoutRequest.city());
             order.setCountry(checkoutRequest.country());
             order.setNotes(checkoutRequest.notes());
-            // Tu peux aussi vérifier que checkoutRequest.email() == userEmail si tu veux
         }
 
         order.setStatus(OrderStatus.PENDING);
@@ -105,8 +106,8 @@ public class OrderService {
         // Vider le panier
         cartService.clearCart(userEmail);
 
-        // Envoi email de confirmation
-        mailService.sendOrderConfirmation(savedOrder);
+        // ❌ On NE PASSE PLUS l'email ici
+        // mailService.sendOrderConfirmation(savedOrder);
 
         return toDto(savedOrder);
     }
@@ -176,6 +177,42 @@ public class OrderService {
         }
 
         return toDto(saved);
+    }
+
+    // ------------------------------------------------------
+    // STRIPE : CONFIRMER LE PAIEMENT + ENVOYER EMAIL
+    // ------------------------------------------------------
+    @Transactional
+    public OrderResponse markOrderAsPaidFromStripeSession(String sessionId) throws StripeException {
+        // 1) Récupérer la session Stripe
+        Session session = Session.retrieve(sessionId);
+
+        if (!"paid".equalsIgnoreCase(session.getPaymentStatus())) {
+            throw new IllegalStateException("Paiement non confirmé par Stripe.");
+        }
+
+        // 2) Récupérer la référence de commande dans les métadonnées
+        String orderReference = session.getMetadata().get("orderReference");
+        if (orderReference == null) {
+            throw new IllegalStateException("Référence de commande manquante dans la session Stripe.");
+        }
+
+        // 3) Retrouver la commande
+        Order order = orderRepository.findByReference(orderReference)
+                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable pour la référence : " + orderReference));
+
+        // 4) Si pas encore PAID, on met à jour + on envoie l'email
+        if (order.getStatus() != OrderStatus.PAID) {
+            order.setStatus(OrderStatus.PAID);
+            Order saved = orderRepository.save(order);
+
+            // ✅ Email de confirmation après paiement
+            mailService.sendOrderConfirmation(saved);
+
+            return toDto(saved);
+        }
+
+        return toDto(order);
     }
 
     // ------------------------------------------------------

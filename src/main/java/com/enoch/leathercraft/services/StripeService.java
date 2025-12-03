@@ -28,7 +28,8 @@ public class StripeService {
 
         SessionCreateParams.Builder builder = SessionCreateParams.builder()
                 .setMode(SessionCreateParams.Mode.PAYMENT)
-                .setSuccessUrl(frontendUrl + "/order-success/" + order.getReference())
+                // 🔹 On inclut le {CHECKOUT_SESSION_ID} dans l'URL de succès
+                .setSuccessUrl(frontendUrl + "/order-success/" + order.getReference() + "?session_id={CHECKOUT_SESSION_ID}")
                 .setCancelUrl(frontendUrl + "/checkout?canceled=true")
                 .putMetadata("orderReference", order.getReference());
 
