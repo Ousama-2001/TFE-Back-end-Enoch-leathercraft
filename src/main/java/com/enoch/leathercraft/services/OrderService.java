@@ -1,5 +1,6 @@
 package com.enoch.leathercraft.services;
 
+import com.enoch.leathercraft.dto.CheckoutRequest;
 import com.enoch.leathercraft.dto.OrderItemResponse;
 import com.enoch.leathercraft.dto.OrderResponse;
 import com.enoch.leathercraft.entities.*;
@@ -33,7 +34,7 @@ public class OrderService {
     // CREATE ORDER
     // ------------------------------------------------------
     @Transactional
-    public OrderResponse createOrderFromCart(String userEmail) {
+    public OrderResponse createOrderFromCart(String userEmail, CheckoutRequest checkoutRequest) {
         Cart cart = cartRepository.findByUser_EmailAndStatus(userEmail, CartStatus.OPEN)
                 .orElseThrow(() -> new EntityNotFoundException("Aucun panier ouvert trouvé pour cet utilisateur"));
 
@@ -43,12 +44,24 @@ public class OrderService {
 
         Order order = new Order();
         order.setReference("CMD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-        order.setCustomerEmail(userEmail);
+        order.setCustomerEmail(userEmail); // email du compte
+
+        // 🔹 Infos de checkout
+        if (checkoutRequest != null) {
+            order.setFirstName(checkoutRequest.firstName());
+            order.setLastName(checkoutRequest.lastName());
+            order.setPhone(checkoutRequest.phone());
+            order.setStreet(checkoutRequest.street());
+            order.setPostalCode(checkoutRequest.postalCode());
+            order.setCity(checkoutRequest.city());
+            order.setCountry(checkoutRequest.country());
+            order.setNotes(checkoutRequest.notes());
+            // Tu peux aussi vérifier que checkoutRequest.email() == userEmail si tu veux
+        }
+
         order.setStatus(OrderStatus.PENDING);
 
         BigDecimal totalAmount = BigDecimal.ZERO;
-
-        // Pour stocker les produits dont on met à jour le stock
         Set<Product> updatedProducts = new HashSet<>();
 
         for (CartItem cartItem : cart.getItems()) {
@@ -110,7 +123,6 @@ public class OrderService {
                 .collect(Collectors.toList());
     }
 
-    // Détail d'une commande pour le client (vérifie l'email)
     @Transactional(readOnly = true)
     public OrderResponse getUserOrderById(Long orderId, String userEmail) {
         Order order = orderRepository.findById(orderId)
@@ -134,7 +146,6 @@ public class OrderService {
                 .collect(Collectors.toList());
     }
 
-    // Détail commande admin
     @Transactional(readOnly = true)
     public OrderResponse getOrderById(Long orderId) {
         Order order = orderRepository.findById(orderId)
@@ -160,14 +171,12 @@ public class OrderService {
         order.setStatus(statusEnum);
         Order saved = orderRepository.save(order);
 
-        // Envoi d'un email pour certaines transitions
         if (statusEnum == OrderStatus.SHIPPED || statusEnum == OrderStatus.DELIVERED) {
             mailService.sendOrderStatusUpdated(saved);
         }
 
         return toDto(saved);
     }
-
 
     // ------------------------------------------------------
     // DTO MAPPER

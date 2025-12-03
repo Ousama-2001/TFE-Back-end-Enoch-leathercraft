@@ -2,6 +2,7 @@ package com.enoch.leathercraft.entities;
 
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -24,10 +25,22 @@ public class Order {
     @Enumerated(EnumType.STRING)
     private OrderStatus status;
 
-    // L'email du client qui a passé la commande (pour l'historique)
+    // L'email du client qui a passé la commande (compte)
     private String customerEmail;
 
-    // La liste des produits achetés
+    // 🔹 Infos de contact / livraison du checkout
+    private String firstName;
+    private String lastName;
+    private String phone;
+    private String street;
+    private String postalCode;
+    private String city;
+    private String country;
+
+    @Column(length = 1000)
+    private String notes;
+
+    // Lignes de commande
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> items = new ArrayList<>();
 

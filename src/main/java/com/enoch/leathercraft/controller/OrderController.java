@@ -1,5 +1,6 @@
 package com.enoch.leathercraft.controller;
 
+import com.enoch.leathercraft.dto.CheckoutRequest;
 import com.enoch.leathercraft.dto.OrderResponse;
 import com.enoch.leathercraft.services.OrderService;
 import lombok.RequiredArgsConstructor;
@@ -21,9 +22,12 @@ public class OrderController {
      * POST /api/orders/checkout
      */
     @PostMapping("/checkout")
-    public ResponseEntity<OrderResponse> checkout(Authentication authentication) {
+    public ResponseEntity<OrderResponse> checkout(
+            Authentication authentication,
+            @RequestBody CheckoutRequest request
+    ) {
         String email = authentication.getName();
-        return ResponseEntity.ok(orderService.createOrderFromCart(email));
+        return ResponseEntity.ok(orderService.createOrderFromCart(email, request));
     }
 
     /**
