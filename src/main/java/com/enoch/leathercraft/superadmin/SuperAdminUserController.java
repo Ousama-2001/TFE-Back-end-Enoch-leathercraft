@@ -47,7 +47,7 @@ public class SuperAdminUserController {
 
     /**
      * DELETE /api/super-admin/users/{id}
-     * -> soft delete, renvoie l'utilisateur soft-deleted
+     * -> soft delete
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<UserAdminDto> softDelete(
@@ -56,7 +56,20 @@ public class SuperAdminUserController {
     ) {
         String currentEmail = authentication.getName();
         UserAdminDto dto = superAdminUserService.softDeleteUser(id, currentEmail);
-        // 🔹 200 OK + JSON -> plus de "Nothing to write: null body"
+        return ResponseEntity.ok(dto);
+    }
+
+    /**
+     * POST /api/super-admin/users/{id}/restore
+     * -> annule le soft delete
+     */
+    @PostMapping("/{id}/restore")
+    public ResponseEntity<UserAdminDto> restore(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        String currentEmail = authentication.getName();
+        UserAdminDto dto = superAdminUserService.restoreUser(id, currentEmail);
         return ResponseEntity.ok(dto);
     }
 }

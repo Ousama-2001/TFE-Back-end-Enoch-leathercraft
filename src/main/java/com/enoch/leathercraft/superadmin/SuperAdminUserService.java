@@ -23,7 +23,6 @@ public class SuperAdminUserService {
      */
     @Transactional(readOnly = true)
     public List<UserAdminDto> findAllUsers() {
-        // 🔹 on NE filtre plus sur deleted, on veut tout voir côté super admin
         return userRepository.findAll()
                 .stream()
                 .map(UserAdminDto::fromEntity)
@@ -70,7 +69,26 @@ public class SuperAdminUserService {
             userRepository.save(user);
         }
 
-        // 🔹 on renvoie toujours l'utilisateur (avec deleted=true)
+        return UserAdminDto.fromEntity(user);
+    }
+
+    /**
+     * Restore (annule le soft delete)
+     */
+    @Transactional
+    public UserAdminDto restoreUser(Long userId, String currentEmail) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("Utilisateur introuvable"));
+
+        // Optionnel : empêcher quelqu’un de se restaurer lui-même
+        // mais en pratique, si le compte est deleted, il ne peut pas se connecter.
+        // On ne bloque donc pas.
+
+        if (user.isDeleted()) {
+            user.setDeleted(false);
+            userRepository.save(user);
+        }
+
         return UserAdminDto.fromEntity(user);
     }
 }
