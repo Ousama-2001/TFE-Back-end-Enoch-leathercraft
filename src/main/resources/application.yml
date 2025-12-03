@@ -26,16 +26,20 @@ spring:
     enabled: false
 
   mail:
-    host: smtp.gmail.com        # ou host Mailtrap / autre
+    host: smtp.gmail.com
     port: 587
-    username: "saidenoch@gmail.com"          # <-- à remplacer
-    password: "qexm wvao ianm splz" # <-- à remplacer (app password, pas le mdp normal)
+    username: "saidenoch@gmail.com"
+    password: ""  # ← IMPORTANT : vide ici
     properties:
       mail:
         smtp:
           auth: true
           starttls:
             enable: true
+
+  # ← ON AJOUTE CETTE PARTIE ICI
+  config:
+    import: optional:application-secret.yml
 
 springdoc:
   api-docs:
@@ -49,8 +53,12 @@ app:
   jwt:
     secret: "change-me-to-a-256-bit-secret-at-least-32-bytes-long-1234567890"
     expiration-minutes: 120
+    frontend-url: "http://localhost:4200"
 
 logging:
   level:
     org.springframework.security: DEBUG
     org.springframework.web: DEBUG
+
+stripe:
+  secret-key: ""  # ← IMPORTANT : vide ici

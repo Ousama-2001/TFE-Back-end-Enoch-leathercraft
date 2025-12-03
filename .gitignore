@@ -31,3 +31,5 @@ build/
 
 ### VS Code ###
 .vscode/
+# Secrets locaux (non versionnés)
+src/main/resources/application-secret.yml
