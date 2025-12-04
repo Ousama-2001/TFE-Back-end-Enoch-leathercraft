@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/controller/AccountController.java
 package com.enoch.leathercraft.controller;
 
 import com.enoch.leathercraft.auth.domain.User;
@@ -6,7 +7,6 @@ import com.enoch.leathercraft.dto.ChangePasswordRequest;
 import com.enoch.leathercraft.dto.ProfileResponse;
 import com.enoch.leathercraft.dto.ProfileUpdateRequest;
 import com.enoch.leathercraft.dto.OrderResponse;
-
 
 import com.enoch.leathercraft.services.MailService;
 import com.enoch.leathercraft.services.OrderService;
@@ -29,7 +29,7 @@ public class AccountController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final OrderService orderService;
-    private final MailService mailService; // ⬅️ ajouté
+    private final MailService mailService;
 
     private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -119,5 +119,21 @@ public class AccountController {
 
         mailService.sendPasswordChangedEmail(user.getEmail());
         return ResponseEntity.ok("Mot de passe mis à jour.");
+    }
+
+    // --- SUPPRESSION DE MON COMPTE (SOFT DELETE) ---
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteMyAccount() {
+        User user = getCurrentUser();
+
+        if (!user.isDeleted()) {
+            user.setDeleted(true);
+            userRepository.save(user);
+        }
+
+        // Tu peux éventuellement envoyer un mail ici :
+        // mailService.sendAccountDeletedEmail(user.getEmail());
+
+        return ResponseEntity.noContent().build(); // 204
     }
 }

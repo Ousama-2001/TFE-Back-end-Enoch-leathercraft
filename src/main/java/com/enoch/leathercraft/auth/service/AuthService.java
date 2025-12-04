@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/auth/service/AuthService.java
 package com.enoch.leathercraft.auth.service;
 
 import com.enoch.leathercraft.auth.domain.Role;
@@ -70,6 +71,11 @@ public class AuthService {
                 users.findByEmail(identifier)
                         .or(() -> users.findByUsername(identifier))
                         .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+        // 🔴 Empêcher la connexion si le compte est soft-deleted
+        if (u.isDeleted()) {
+            throw new BadCredentialsException("ACCOUNT_DELETED");
+        }
 
         if (!encoder.matches(request.getPassword(), u.getPasswordHash())) {
             throw new BadCredentialsException("BAD_CREDENTIALS");
