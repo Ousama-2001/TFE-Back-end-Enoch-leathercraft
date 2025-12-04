@@ -1,23 +1,41 @@
+// src/main/java/com/enoch/leathercraft/entities/WishlistItem.java
 package com.enoch.leathercraft.entities;
 
-import com.enoch.leathercraft.entities.Product;
 import com.enoch.leathercraft.auth.domain.User;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "wishlist_items",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "product_id"}))
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Table(name = "wishlist_items")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class WishlistItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(optional = false)
+    // ✅ lien vers USER
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    @JsonIgnoreProperties({
+            "passwordHash",
+            "createdAt",
+            "updatedAt",
+            "wishlistItems"
+    })
     private User user;
 
-    @ManyToOne(optional = false)
+    // ✅ lien vers PRODUCT
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "product_id", nullable = false)
+    @JsonIgnoreProperties({
+            "images",
+            "wishlistItems"
+    })
     private Product product;
 }
