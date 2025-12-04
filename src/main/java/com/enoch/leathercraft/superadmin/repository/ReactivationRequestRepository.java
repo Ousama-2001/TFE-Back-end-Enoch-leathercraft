@@ -7,5 +7,7 @@ import java.util.List;
 
 public interface ReactivationRequestRepository extends JpaRepository<ReactivationRequest, Long> {
 
+    boolean existsByEmailAndHandledIsFalse(String email);
+
     List<ReactivationRequest> findAllByOrderByCreatedAtDesc();
 }

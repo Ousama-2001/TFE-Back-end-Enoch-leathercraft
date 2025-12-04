@@ -3,6 +3,7 @@ package com.enoch.leathercraft.services;
 import com.enoch.leathercraft.entities.Order;
 import com.enoch.leathercraft.entities.OrderItem;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -12,33 +13,44 @@ import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MailService {
 
     private final JavaMailSender mailSender;
 
-    // Adresse d'expéditeur (configurable)
     @Value("${app.mail.from:no-reply@enoch-leathercraft.com}")
     private String from;
 
-    // 🔥 Email du super admin (pour les demandes de réactivation)
-    @Value("${app.superadmin.email:saidenoch@gmail.com}")
+    @Value("${app.superadmin.email:}")
     private String superAdminEmail;
 
-    // ================== UTILITAIRE GÉNÉRIQUE ==================
+    @Value("${app.mail.enabled:true}")
+    private boolean mailEnabled;
 
+    // ====================== GENERIC SENDER =======================
     private void sendSimpleMail(String to, String subject, String text) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(to);
-        message.setFrom(from);
-        message.setSubject(subject);
-        message.setText(text);
-        mailSender.send(message);
+        if (!mailEnabled) {
+            log.warn("📧 Envoi désactivé (app.mail.enabled=false). Mail ignoré → {}", to);
+            return;
+        }
+
+        try {
+            SimpleMailMessage msg = new SimpleMailMessage();
+            msg.setTo(to);
+            msg.setFrom(from);
+            msg.setSubject(subject);
+            msg.setText(text);
+
+            mailSender.send(msg);
+            log.info("📧 Email envoyé → {}", to);
+        } catch (Exception e) {
+            log.error("❌ Erreur lors de l’envoi d’un email à {} : {}", to, e.getMessage());
+        }
     }
 
-    // ================== MOT DE PASSE ==================
-
+    // ==================== PASSWORD RESET =======================
     public void sendPasswordResetLink(String to, String resetLink) {
-        String body = """
+        String text = """
                 Bonjour,
 
                 Voici votre lien pour réinitialiser votre mot de passe :
@@ -49,101 +61,96 @@ public class MailService {
                 Enoch Leathercraft
                 """.formatted(resetLink);
 
-        sendSimpleMail(to, "Réinitialisation de votre mot de passe", body);
+        sendSimpleMail(to, "Réinitialisation du mot de passe", text);
     }
 
     public void sendPasswordChangedEmail(String to) {
-        String body = """
+        String text = """
                 Bonjour,
 
-                Votre mot de passe a été modifié avec succès.
-                Si ce n'était pas vous, contactez immédiatement le support.
+                Votre mot de passe a bien été modifié.
+                Si ce n'était pas vous, contactez immédiatement notre support.
 
                 Enoch Leathercraft
                 """;
 
-        sendSimpleMail(to, "Votre mot de passe a été modifié", body);
+        sendSimpleMail(to, "Votre mot de passe a été modifié", text);
     }
 
-    // ================== COMMANDE : CONFIRMATION ==================
-
+    // ==================== ORDER CONFIRMATION =======================
     public void sendOrderConfirmation(Order order) {
         try {
-            String subject = "Confirmation de votre commande " + order.getReference();
             String body = buildOrderBody(order);
-            sendSimpleMail(order.getCustomerEmail(), subject, body);
+            sendSimpleMail(order.getCustomerEmail(),
+                    "Confirmation de commande " + order.getReference(),
+                    body);
         } catch (Exception e) {
-            // On ne casse pas la commande si l'email échoue
-            e.printStackTrace();
+            log.error("Erreur envoi mail confirmation commande {}", order.getReference(), e);
         }
     }
 
-    // ================== COMMANDE : MISE À JOUR STATUT ==================
-
     public void sendOrderStatusUpdated(Order order) {
         try {
-            String subject = "Mise à jour de votre commande " + order.getReference();
             String body = buildStatusBody(order);
-            sendSimpleMail(order.getCustomerEmail(), subject, body);
+            sendSimpleMail(order.getCustomerEmail(),
+                    "Mise à jour commande " + order.getReference(),
+                    body);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Erreur envoi mail statut commande {}", order.getReference(), e);
         }
     }
 
     private String buildOrderBody(Order order) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Bonjour,\n\n");
-        sb.append("Merci pour votre commande sur Enoch Leathercraft.\n\n");
-        sb.append("Référence : ").append(order.getReference()).append("\n");
-        sb.append("Date      : ").append(order.getCreatedAt()).append("\n");
-        sb.append("Statut    : ").append(order.getStatus()).append("\n\n");
-        sb.append("Détail :\n");
 
+        sb.append("Bonjour,\n\n");
+        sb.append("Merci pour votre commande !\n\n");
+        sb.append("Référence : ").append(order.getReference()).append("\n");
+        sb.append("Date      : ").append(order.getCreatedAt()).append("\n\n");
+
+        sb.append("Articles :\n");
         for (OrderItem item : order.getItems()) {
-            BigDecimal lineTotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
-            sb.append(" - ")
-                    .append(item.getQuantity()).append(" × ")
-                    .append(item.getProductName())
-                    .append(" (").append(item.getUnitPrice()).append(" €)")
-                    .append(" = ").append(lineTotal).append(" €\n");
+            BigDecimal total = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+            sb.append(" - ").append(item.getQuantity()).append(" × ").append(item.getProductName())
+                    .append(" = ").append(total).append(" €\n");
         }
 
         sb.append("\nTotal : ").append(order.getTotalAmount()).append(" €\n\n");
-        sb.append("Nous vous tiendrons informé(e) lors de l'expédition.\n\n");
-        sb.append("L'équipe Enoch Leathercraft");
+        sb.append("Merci pour votre confiance.\n");
+        sb.append("Enoch Leathercraft");
 
         return sb.toString();
     }
 
     private String buildStatusBody(Order order) {
         StringBuilder sb = new StringBuilder();
+
         sb.append("Bonjour,\n\n");
-        sb.append("Le statut de votre commande ").append(order.getReference()).append(" a été mis à jour.\n\n");
+        sb.append("Le statut de votre commande ").append(order.getReference()).append(" a été modifié.\n\n");
         sb.append("Nouveau statut : ").append(order.getStatus()).append("\n\n");
 
-        if (order.getStatus() != null) {
-            switch (order.getStatus()) {
-                case SHIPPED -> sb.append("Votre commande a été expédiée. Elle sera bientôt livrée.\n\n");
-                case DELIVERED -> sb.append("Votre commande est indiquée comme livrée.\n\n");
-                case CANCELLED -> sb.append("Votre commande a été annulée.\n\n");
-                default -> sb.append("");
-            }
-        }
-
-        sb.append("Merci pour votre confiance.\n\n");
-        sb.append("L'équipe Enoch Leathercraft");
+        sb.append("Merci pour votre confiance.\n");
+        sb.append("Enoch Leathercraft");
 
         return sb.toString();
     }
 
-    // ================== 🔥 RÉACTIVATION COMPTE → MAIL SUPER ADMIN ==================
+    // ==================== ACCOUNT REACTIVATION =======================
+    public void sendReactivationRequestEmailToAdmin(String userEmail, String message) {
 
-    public void sendReactivationRequestEmailToAdmin(String userEmail) {
-        String subject = "Nouvelle demande de réactivation de compte";
-        String text = "Une demande de réactivation de compte a été effectuée pour l'adresse : "
-                + userEmail
-                + "\n\nConnectez-vous en tant que super admin pour traiter cette demande.";
+        String body = """
+                Bonjour,
 
-        sendSimpleMail(superAdminEmail, subject, text);
+                Une demande de réactivation de compte a été soumise.
+
+                Email de l'utilisateur : %s
+                Message : %s
+
+                Connectez-vous au panneau Super Admin → Gestion des demandes.
+
+                Enoch Leathercraft Shop
+                """.formatted(userEmail, message == null ? "Aucun message" : message);
+
+        sendSimpleMail(superAdminEmail, "🔔 Nouvelle demande de réactivation", body);
     }
 }

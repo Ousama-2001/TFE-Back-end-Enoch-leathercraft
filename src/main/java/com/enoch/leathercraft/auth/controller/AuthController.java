@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/auth/controller/AuthController.java
 package com.enoch.leathercraft.auth.controller;
 
 import com.enoch.leathercraft.auth.domain.PasswordResetToken;
@@ -5,12 +6,12 @@ import com.enoch.leathercraft.auth.domain.User;
 import com.enoch.leathercraft.auth.dto.AuthRequest;
 import com.enoch.leathercraft.auth.dto.AuthResponse;
 import com.enoch.leathercraft.auth.dto.RegisterRequest;
-import com.enoch.leathercraft.auth.dto.ReactivateRequest;
 import com.enoch.leathercraft.auth.repo.UserRepository;
 import com.enoch.leathercraft.auth.service.AuthService;
 import com.enoch.leathercraft.validator.PasswordValidator;
 import com.enoch.leathercraft.services.MailService;
 import com.enoch.leathercraft.auth.repo.PasswordResetTokenRepository;
+import com.enoch.leathercraft.superadmin.service.SuperAdminRequestService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +33,9 @@ public class AuthController {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final MailService mailService;
     private final PasswordEncoder passwordEncoder;
+
+    // Super admin (demandes de réactivation)
+    private final SuperAdminRequestService superAdminRequestService;
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
@@ -60,27 +64,7 @@ public class AuthController {
         return ResponseEntity.ok(new MeResponse(email, role));
     }
 
-    // ================================
-    //  DEMANDE DE RÉACTIVATION COMPTE
-    //  POST /api/auth/reactivate-request
-    // ================================
-    @PostMapping("/reactivate-request")
-    public ResponseEntity<String> requestReactivation(
-            @RequestBody ReactivateRequest request
-    ) {
-        authService.requestReactivation(request.getEmail());
-
-        // On ne révèle pas si l'email existe ou non
-        return ResponseEntity.ok(
-                "Si un compte associé à cet email existe et est désactivé, " +
-                        "une demande de réactivation a été transmise à l’administrateur."
-        );
-    }
-
-    // ================================
-    //  MOT DE PASSE OUBLIÉ : DEMANDE
-    //  POST /api/auth/password-reset-request
-    // ================================
+    // =============== MOT DE PASSE OUBLIÉ : DEMANDE ===============
     @PostMapping("/password-reset-request")
     public ResponseEntity<?> requestPasswordReset(@RequestBody Map<String, String> payload) {
         String email = payload.get("email");
@@ -90,12 +74,12 @@ public class AuthController {
 
         Optional<User> userOpt = userRepository.findByEmail(email);
         if (userOpt.isEmpty()) {
+            // Ne pas révéler si l'email existe ou pas
             return ResponseEntity.ok().build();
         }
 
         User user = userOpt.get();
-
-        PasswordResetToken token = PasswordResetToken.forUser(user, 30); // 30 min
+        PasswordResetToken token = PasswordResetToken.forUser(user, 30);
         passwordResetTokenRepository.save(token);
 
         String resetLink = "http://localhost:4200/reset-password?token=" + token.getToken();
@@ -104,10 +88,7 @@ public class AuthController {
         return ResponseEntity.ok().build();
     }
 
-    // ================================
-    //  MOT DE PASSE OUBLIÉ : RESET
-    //  POST /api/auth/password-reset
-    // ================================
+    // =============== MOT DE PASSE OUBLIÉ : RESET ===============
     @PostMapping("/password-reset")
     public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> payload) {
         String tokenValue = payload.get("token");
@@ -129,7 +110,6 @@ public class AuthController {
 
         User user = token.getUser();
 
-        // vérif complexité + pas identique à l'ancien
         if (!PasswordValidator.isStrongPassword(newPassword)) {
             return ResponseEntity.badRequest()
                     .body("Mot de passe trop faible.");
@@ -141,10 +121,30 @@ public class AuthController {
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
-        passwordResetTokenRepository.delete(token); // token single-use
+        passwordResetTokenRepository.delete(token);
 
         mailService.sendPasswordChangedEmail(user.getEmail());
 
         return ResponseEntity.ok().build();
     }
+
+    // =============== DEMANDE DE RÉACTIVATION ===============
+    @PostMapping("/reactivation-request")
+    public ResponseEntity<?> requestReactivation(@RequestBody Map<String, String> payload) {
+
+        String email = payload.get("email");
+
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body("EMAIL_REQUIRED");
+        }
+
+        // Normalisation
+        String normalized = email.trim().toLowerCase();
+
+        // Enregistrer la demande + envoyer l'email au super admin
+        superAdminRequestService.createReactivationRequest(normalized);
+
+        return ResponseEntity.ok("REQUEST_SENT");
+    }
+
 }

@@ -21,6 +21,9 @@ public class ReactivationRequest {
     @Column(nullable = false, length = 180)
     private String email;
 
+    @Column(name = "message", columnDefinition = "TEXT")
+    private String message; // 🔥 nouveau champ
+
     @Column(name = "created_at", nullable = false, columnDefinition = "timestamp with time zone")
     private Instant createdAt;
 

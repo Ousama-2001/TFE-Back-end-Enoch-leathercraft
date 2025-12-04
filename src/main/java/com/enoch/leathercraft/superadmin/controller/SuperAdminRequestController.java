@@ -16,12 +16,22 @@ public class SuperAdminRequestController {
 
     private final SuperAdminRequestService superAdminRequestService;
 
+    /**
+     * 🔥 Récupérer toutes les demandes de réactivation (triées par date DESC)
+     */
     @GetMapping
     public ResponseEntity<List<ReactivationRequestDto>> getAll() {
-        List<ReactivationRequestDto> list = superAdminRequestService.findAllReactivationRequests();
+        List<ReactivationRequestDto> list =
+                superAdminRequestService.findAllReactivationRequests();
+
         return ResponseEntity.ok(list);
     }
 
+    /**
+     * 🔥 Mettre à jour le statut "handled" d'une demande
+     * value=true → traité
+     * value=false → remettre en attente
+     */
     @PatchMapping("/{id}/handled")
     public ResponseEntity<ReactivationRequestDto> updateHandled(
             @PathVariable Long id,
@@ -29,7 +39,10 @@ public class SuperAdminRequestController {
             Authentication authentication
     ) {
         String adminEmail = authentication.getName();
-        ReactivationRequestDto dto = superAdminRequestService.updateHandled(id, value, adminEmail);
+
+        ReactivationRequestDto dto =
+                superAdminRequestService.updateHandled(id, value, adminEmail);
+
         return ResponseEntity.ok(dto);
     }
 }

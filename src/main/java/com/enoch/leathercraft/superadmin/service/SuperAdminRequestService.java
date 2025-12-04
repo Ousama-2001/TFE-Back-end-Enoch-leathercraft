@@ -1,8 +1,9 @@
 package com.enoch.leathercraft.superadmin.service;
 
+import com.enoch.leathercraft.services.MailService;
 import com.enoch.leathercraft.superadmin.ReactivationRequest;
-import com.enoch.leathercraft.superadmin.repository.ReactivationRequestRepository;
 import com.enoch.leathercraft.superadmin.dto.ReactivationRequestDto;
+import com.enoch.leathercraft.superadmin.repository.ReactivationRequestRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,31 @@ import java.util.List;
 public class SuperAdminRequestService {
 
     private final ReactivationRequestRepository reactivationRequestRepository;
+    private final MailService mailService;
+
+    @Transactional
+    public void createReactivationRequest(String email) {
+
+        String normalized = email.trim().toLowerCase();
+
+        // 🔥 Bloque les doublons
+        if (reactivationRequestRepository.existsByEmailAndHandledIsFalse(normalized)) {
+            return;
+        }
+
+        ReactivationRequest req = new ReactivationRequest();
+        req.setEmail(normalized);
+        req.setHandled(false);
+        req.setCreatedAt(Instant.now());
+
+        reactivationRequestRepository.save(req);
+
+        // 🔥 ENVOI EMAIL SUPER ADMIN
+        mailService.sendReactivationRequestEmailToAdmin(
+                normalized,
+                "L'utilisateur souhaite réactiver son compte."
+        );
+    }
 
     @Transactional(readOnly = true)
     public List<ReactivationRequestDto> findAllReactivationRequests() {
@@ -27,10 +53,12 @@ public class SuperAdminRequestService {
 
     @Transactional
     public ReactivationRequestDto updateHandled(Long id, boolean value, String adminEmail) {
+
         ReactivationRequest req = reactivationRequestRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Demande introuvable"));
 
         req.setHandled(value);
+
         if (value) {
             req.setHandledAt(Instant.now());
             req.setHandledBy(adminEmail);
@@ -40,6 +68,7 @@ public class SuperAdminRequestService {
         }
 
         reactivationRequestRepository.save(req);
+
         return ReactivationRequestDto.fromEntity(req);
     }
 }
