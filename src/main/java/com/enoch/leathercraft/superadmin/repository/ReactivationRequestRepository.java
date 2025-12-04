@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/superadmin/repository/ReactivationRequestRepository.java
 package com.enoch.leathercraft.superadmin.repository;
 
 import com.enoch.leathercraft.superadmin.ReactivationRequest;
@@ -7,7 +8,7 @@ import java.util.List;
 
 public interface ReactivationRequestRepository extends JpaRepository<ReactivationRequest, Long> {
 
-    boolean existsByEmailAndHandledIsFalse(String email);
-
     List<ReactivationRequest> findAllByOrderByCreatedAtDesc();
+
+    boolean existsByEmailAndHandledIsFalse(String email);
 }

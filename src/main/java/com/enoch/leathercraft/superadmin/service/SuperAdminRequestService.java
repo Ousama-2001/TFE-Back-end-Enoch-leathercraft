@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/superadmin/service/SuperAdminRequestService.java
 package com.enoch.leathercraft.superadmin.service;
 
 import com.enoch.leathercraft.services.MailService;
@@ -19,30 +20,34 @@ public class SuperAdminRequestService {
     private final ReactivationRequestRepository reactivationRequestRepository;
     private final MailService mailService;
 
+    /**
+     * @return true si une nouvelle demande est créée, false si une demande non traitée existe déjà.
+     */
     @Transactional
-    public void createReactivationRequest(String email) {
-
+    public boolean createReactivationRequest(String email, String message) {
         String normalized = email.trim().toLowerCase();
 
-        // 🔥 Bloque les doublons
-        if (reactivationRequestRepository.existsByEmailAndHandledIsFalse(normalized)) {
-            return;
+        boolean exists = reactivationRequestRepository
+                .existsByEmailAndHandledIsFalse(normalized);
+
+        if (exists) {
+            return false; // déjà une demande ouverte
         }
 
         ReactivationRequest req = new ReactivationRequest();
         req.setEmail(normalized);
         req.setHandled(false);
         req.setCreatedAt(Instant.now());
+        req.setMessage(message);
 
         reactivationRequestRepository.save(req);
 
-        // 🔥 ENVOI EMAIL SUPER ADMIN
-        mailService.sendReactivationRequestEmailToAdmin(
-                normalized,
-                "L'utilisateur souhaite réactiver son compte."
-        );
+        mailService.sendReactivationRequestEmailToAdmin(normalized, message);
+        return true;
     }
 
+
+    // --------- Lecture pour la page super admin ---------
     @Transactional(readOnly = true)
     public List<ReactivationRequestDto> findAllReactivationRequests() {
         return reactivationRequestRepository.findAllByOrderByCreatedAtDesc()
@@ -51,14 +56,13 @@ public class SuperAdminRequestService {
                 .toList();
     }
 
+    // --------- Marquer comme traité / non traité ---------
     @Transactional
     public ReactivationRequestDto updateHandled(Long id, boolean value, String adminEmail) {
-
         ReactivationRequest req = reactivationRequestRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Demande introuvable"));
 
         req.setHandled(value);
-
         if (value) {
             req.setHandledAt(Instant.now());
             req.setHandledBy(adminEmail);
@@ -68,7 +72,6 @@ public class SuperAdminRequestService {
         }
 
         reactivationRequestRepository.save(req);
-
         return ReactivationRequestDto.fromEntity(req);
     }
 }

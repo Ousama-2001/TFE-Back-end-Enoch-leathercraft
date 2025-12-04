@@ -135,22 +135,36 @@ public class MailService {
         return sb.toString();
     }
 
-    // ==================== ACCOUNT REACTIVATION =======================
+// =============== DEMANDE RÉACTIVATION COMPTE ===============
+
     public void sendReactivationRequestEmailToAdmin(String userEmail, String message) {
 
-        String body = """
-                Bonjour,
+        try {
+            SimpleMailMessage msg = new SimpleMailMessage();
+            msg.setTo("saidenoch@gmail.com");
+            msg.setFrom(from);
+            msg.setSubject("🔔 [Enoch] Demande de réactivation de compte");
 
-                Une demande de réactivation de compte a été soumise.
+            String body =
+                    "Bonjour,\n\n" +
+                            "Vous avez reçu une NOUVELLE demande de support.\n\n" +
+                            "Type de demande : RÉACTIVATION DE COMPTE\n" +
+                            "Provenance    : Formulaire de réactivation (page de connexion)\n\n" +
+                            "Email utilisateur : " + userEmail + "\n\n" +
+                            "Message :\n" +
+                            (message == null || message.isBlank()
+                                    ? "Aucun message fourni."
+                                    : message) +
+                            "\n\n" +
+                            "Connectez-vous au panneau super administrateur pour gérer cette demande.\n\n" +
+                            "Enoch Leathercraft Shop";
 
-                Email de l'utilisateur : %s
-                Message : %s
+            msg.setText(body);
+            mailSender.send(msg);
 
-                Connectez-vous au panneau Super Admin → Gestion des demandes.
-
-                Enoch Leathercraft Shop
-                """.formatted(userEmail, message == null ? "Aucun message" : message);
-
-        sendSimpleMail(superAdminEmail, "🔔 Nouvelle demande de réactivation", body);
+        } catch (Exception e) {
+            log.error("❌ Erreur envoi email super admin : {}", e.getMessage());
+        }
     }
+
 }

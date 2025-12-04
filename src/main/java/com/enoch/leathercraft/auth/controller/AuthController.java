@@ -129,22 +129,26 @@ public class AuthController {
     }
 
     // =============== DEMANDE DE RÉACTIVATION ===============
+
     @PostMapping("/reactivation-request")
     public ResponseEntity<?> requestReactivation(@RequestBody Map<String, String> payload) {
 
         String email = payload.get("email");
+        String message = payload.get("message");
 
         if (email == null || email.isBlank()) {
             return ResponseEntity.badRequest().body("EMAIL_REQUIRED");
         }
 
-        // Normalisation
-        String normalized = email.trim().toLowerCase();
+        boolean created = superAdminRequestService.createReactivationRequest(email, message);
 
-        // Enregistrer la demande + envoyer l'email au super admin
-        superAdminRequestService.createReactivationRequest(normalized);
+        if (!created) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body("REQUEST_ALREADY_EXISTS");
+        }
 
         return ResponseEntity.ok("REQUEST_SENT");
     }
 
 }
+
+

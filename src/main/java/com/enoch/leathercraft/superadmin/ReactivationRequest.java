@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/superadmin/ReactivationRequest.java
 package com.enoch.leathercraft.superadmin;
 
 import jakarta.persistence.*;
@@ -21,8 +22,8 @@ public class ReactivationRequest {
     @Column(nullable = false, length = 180)
     private String email;
 
-    @Column(name = "message", columnDefinition = "TEXT")
-    private String message; // 🔥 nouveau champ
+    @Column(name = "message", length = 1000)
+    private String message;
 
     @Column(name = "created_at", nullable = false, columnDefinition = "timestamp with time zone")
     private Instant createdAt;
@@ -38,6 +39,8 @@ public class ReactivationRequest {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = Instant.now();
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
     }
 }
