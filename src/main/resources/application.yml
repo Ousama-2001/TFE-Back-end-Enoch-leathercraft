@@ -29,7 +29,7 @@ spring:
     host: smtp.gmail.com
     port: 587
     username: "saidenoch@gmail.com"
-    password: ""  # ← IMPORTANT : vide ici
+    password: ""   # mot de passe d’application chargé depuis application-secret.yml
     properties:
       mail:
         smtp:
@@ -37,9 +37,8 @@ spring:
           starttls:
             enable: true
 
-  # ← ON AJOUTE CETTE PARTIE ICI
   config:
-    import: optional:application-secret.yml
+    import: optional:application-secret.yml   # ← IMPORTANT
 
 springdoc:
   api-docs:
@@ -50,6 +49,11 @@ springdoc:
     disable-swagger-default-url: true
 
 app:
+  mail:
+    from: "no-reply@enoch-leathercraft.com"
+  superadmin:
+    email: "saidenoch@gmail.com"
+
   jwt:
     secret: "change-me-to-a-256-bit-secret-at-least-32-bytes-long-1234567890"
     expiration-minutes: 120
@@ -61,4 +65,4 @@ logging:
     org.springframework.web: DEBUG
 
 stripe:
-  secret-key: ""  # ← IMPORTANT : vide ici
+  secret-key: ""   # chargé depuis application-secret.yml

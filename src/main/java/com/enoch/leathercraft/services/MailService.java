@@ -16,60 +16,62 @@ public class MailService {
 
     private final JavaMailSender mailSender;
 
-    // Adresse d'expéditeur (configurable dans application.yml / properties)
+    // Adresse d'expéditeur (configurable)
     @Value("${app.mail.from:no-reply@enoch-leathercraft.com}")
     private String from;
+
+    // 🔥 Email du super admin (pour les demandes de réactivation)
+    @Value("${app.superadmin.email:saidenoch@gmail.com}")
+    private String superAdminEmail;
+
+    // ================== UTILITAIRE GÉNÉRIQUE ==================
+
+    private void sendSimpleMail(String to, String subject, String text) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(to);
+        message.setFrom(from);
+        message.setSubject(subject);
+        message.setText(text);
+        mailSender.send(message);
+    }
 
     // ================== MOT DE PASSE ==================
 
     public void sendPasswordResetLink(String to, String resetLink) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(to);
-        message.setFrom(from);
-        message.setSubject("Réinitialisation de votre mot de passe");
-        message.setText("""
+        String body = """
                 Bonjour,
 
                 Voici votre lien pour réinitialiser votre mot de passe :
-                """ + resetLink + """
+                %s
 
                 Si vous n'avez pas demandé cela, ignorez cet email.
 
                 Enoch Leathercraft
-                """);
+                """.formatted(resetLink);
 
-        mailSender.send(message);
+        sendSimpleMail(to, "Réinitialisation de votre mot de passe", body);
     }
 
     public void sendPasswordChangedEmail(String to) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(to);
-        message.setFrom(from);
-        message.setSubject("Votre mot de passe a été modifié");
-        message.setText("""
+        String body = """
                 Bonjour,
 
                 Votre mot de passe a été modifié avec succès.
                 Si ce n'était pas vous, contactez immédiatement le support.
 
                 Enoch Leathercraft
-                """);
+                """;
 
-        mailSender.send(message);
+        sendSimpleMail(to, "Votre mot de passe a été modifié", body);
     }
 
     // ================== COMMANDE : CONFIRMATION ==================
 
     public void sendOrderConfirmation(Order order) {
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(order.getCustomerEmail());
-            message.setFrom(from);
-            message.setSubject("Confirmation de votre commande " + order.getReference());
-            message.setText(buildOrderBody(order));
-
-            mailSender.send(message);
-
+            String subject = "Confirmation de votre commande " + order.getReference();
+            String body = buildOrderBody(order);
+            sendSimpleMail(order.getCustomerEmail(), subject, body);
         } catch (Exception e) {
             // On ne casse pas la commande si l'email échoue
             e.printStackTrace();
@@ -80,13 +82,9 @@ public class MailService {
 
     public void sendOrderStatusUpdated(Order order) {
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(order.getCustomerEmail());
-            message.setFrom(from);
-            message.setSubject("Mise à jour de votre commande " + order.getReference());
-            message.setText(buildStatusBody(order));
-
-            mailSender.send(message);
+            String subject = "Mise à jour de votre commande " + order.getReference();
+            String body = buildStatusBody(order);
+            sendSimpleMail(order.getCustomerEmail(), subject, body);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -136,5 +134,16 @@ public class MailService {
         sb.append("L'équipe Enoch Leathercraft");
 
         return sb.toString();
+    }
+
+    // ================== 🔥 RÉACTIVATION COMPTE → MAIL SUPER ADMIN ==================
+
+    public void sendReactivationRequestEmailToAdmin(String userEmail) {
+        String subject = "Nouvelle demande de réactivation de compte";
+        String text = "Une demande de réactivation de compte a été effectuée pour l'adresse : "
+                + userEmail
+                + "\n\nConnectez-vous en tant que super admin pour traiter cette demande.";
+
+        sendSimpleMail(superAdminEmail, subject, text);
     }
 }

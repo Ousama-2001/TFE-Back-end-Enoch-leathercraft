@@ -5,6 +5,7 @@ import com.enoch.leathercraft.auth.domain.User;
 import com.enoch.leathercraft.auth.dto.AuthRequest;
 import com.enoch.leathercraft.auth.dto.AuthResponse;
 import com.enoch.leathercraft.auth.dto.RegisterRequest;
+import com.enoch.leathercraft.auth.dto.ReactivateRequest;
 import com.enoch.leathercraft.auth.repo.UserRepository;
 import com.enoch.leathercraft.auth.service.AuthService;
 import com.enoch.leathercraft.validator.PasswordValidator;
@@ -52,11 +53,28 @@ public class AuthController {
 
         String email = authentication.getName();
         String role = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority) // "ROLE_ADMIN"
+                .map(GrantedAuthority::getAuthority)
                 .findFirst()
                 .orElse("ROLE_CUSTOMER");
 
         return ResponseEntity.ok(new MeResponse(email, role));
+    }
+
+    // ================================
+    //  DEMANDE DE RÉACTIVATION COMPTE
+    //  POST /api/auth/reactivate-request
+    // ================================
+    @PostMapping("/reactivate-request")
+    public ResponseEntity<String> requestReactivation(
+            @RequestBody ReactivateRequest request
+    ) {
+        authService.requestReactivation(request.getEmail());
+
+        // On ne révèle pas si l'email existe ou non
+        return ResponseEntity.ok(
+                "Si un compte associé à cet email existe et est désactivé, " +
+                        "une demande de réactivation a été transmise à l’administrateur."
+        );
     }
 
     // ================================
@@ -72,7 +90,6 @@ public class AuthController {
 
         Optional<User> userOpt = userRepository.findByEmail(email);
         if (userOpt.isEmpty()) {
-            // Pour ne pas leak l’existence de l’email, on renvoie OK quand même
             return ResponseEntity.ok().build();
         }
 

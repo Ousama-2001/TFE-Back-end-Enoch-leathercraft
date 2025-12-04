@@ -1,7 +1,8 @@
 // src/main/java/com/enoch/leathercraft/controller/SuperAdminUserController.java
-package com.enoch.leathercraft.superadmin;
+package com.enoch.leathercraft.superadmin.controller;
 
 import com.enoch.leathercraft.auth.domain.Role;
+import com.enoch.leathercraft.superadmin.service.SuperAdminUserService;
 import com.enoch.leathercraft.superadmin.dto.UpdateUserRoleRequest;
 import com.enoch.leathercraft.superadmin.dto.UserAdminDto;
 import lombok.RequiredArgsConstructor;

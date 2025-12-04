@@ -1,5 +1,5 @@
 // src/main/java/com/enoch/leathercraft/superadmin/SuperAdminUserService.java
-package com.enoch.leathercraft.superadmin;
+package com.enoch.leathercraft.superadmin.service;
 
 import com.enoch.leathercraft.auth.domain.Role;
 import com.enoch.leathercraft.auth.domain.User;

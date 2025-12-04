@@ -1,4 +1,3 @@
-// src/main/java/com/enoch/leathercraft/auth/service/AuthService.java
 package com.enoch.leathercraft.auth.service;
 
 import com.enoch.leathercraft.auth.domain.Role;
@@ -7,8 +6,13 @@ import com.enoch.leathercraft.auth.dto.AuthRequest;
 import com.enoch.leathercraft.auth.dto.AuthResponse;
 import com.enoch.leathercraft.auth.dto.RegisterRequest;
 import com.enoch.leathercraft.auth.repo.UserRepository;
+import com.enoch.leathercraft.services.MailService;
+import com.enoch.leathercraft.superadmin.ReactivationRequest;
+import com.enoch.leathercraft.superadmin.repository.ReactivationRequestRepository;
 import com.enoch.leathercraft.validator.PasswordValidator;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,9 +22,13 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
     private final UserRepository users;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
+    private final ReactivationRequestRepository reactivationRequestRepository;
+    private final MailService mailService;
 
     public AuthResponse register(RegisterRequest request) {
 
@@ -31,7 +39,6 @@ public class AuthService {
             throw new IllegalArgumentException("USERNAME_REQUIRED");
         }
         if (!PasswordValidator.isStrongPassword(request.getPassword())) {
-            // même règle que pour le changement de mot de passe
             throw new IllegalArgumentException("WEAK_PASSWORD");
         }
 
@@ -72,9 +79,8 @@ public class AuthService {
                         .or(() -> users.findByUsername(identifier))
                         .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        // 🔴 Empêcher la connexion si le compte est soft-deleted
         if (u.isDeleted()) {
-            throw new BadCredentialsException("ACCOUNT_DELETED");
+            throw new IllegalStateException("ACCOUNT_DELETED");
         }
 
         if (!encoder.matches(request.getPassword(), u.getPasswordHash())) {
@@ -86,5 +92,32 @@ public class AuthService {
                 .token(token)
                 .role(u.getRole().name())
                 .build();
+    }
+
+    public void requestReactivation(String email) {
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("EMAIL_REQUIRED");
+        }
+
+        String trimmed = email.trim();
+
+        users.findByEmail(trimmed).ifPresentOrElse(user -> {
+            if (user.isDeleted()) {
+                // on crée une demande
+                ReactivationRequest req = new ReactivationRequest();
+                req.setEmail(trimmed);
+                reactivationRequestRepository.save(req);
+
+                // on notifie le super admin par mail
+                mailService.sendReactivationRequestEmailToAdmin(trimmed);
+
+                log.info("Demande de réactivation enregistrée pour {}", trimmed);
+            } else {
+                log.info("Demande de réactivation pour un compte déjà actif : {}", trimmed);
+            }
+        }, () -> {
+            // email inconnu -> on ne dit rien au front
+            log.info("Demande de réactivation pour un email inconnu : {}", trimmed);
+        });
     }
 }
