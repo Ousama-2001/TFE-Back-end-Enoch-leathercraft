@@ -2,6 +2,7 @@
 package com.enoch.leathercraft.entities;
 
 import com.enoch.leathercraft.auth.domain.User;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
@@ -13,29 +14,21 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+// On ignore aussi les champs internes Hibernate au cas où
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class WishlistItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ✅ lien vers USER
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    // ⬇️ on ne renvoie pas le user dans le JSON
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    @JsonIgnoreProperties({
-            "passwordHash",
-            "createdAt",
-            "updatedAt",
-            "wishlistItems"
-    })
+    @JsonIgnore
     private User user;
 
-    // ✅ lien vers PRODUCT
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
-    @JsonIgnoreProperties({
-            "images",
-            "wishlistItems"
-    })
     private Product product;
 }

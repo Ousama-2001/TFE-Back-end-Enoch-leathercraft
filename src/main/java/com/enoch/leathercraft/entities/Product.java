@@ -1,7 +1,7 @@
 // src/main/java/com/enoch/leathercraft/entities/Product.java
 package com.enoch.leathercraft.entities;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -17,6 +17,8 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+// ⬇️ IMPORTANT : on dit à Jackson d'ignorer les champs internes d'Hibernate
+@JsonIgnoreProperties(value = {"hibernateLazyInitializer", "handler"}, ignoreUnknown = true)
 public class Product {
 
     @Id
@@ -72,12 +74,6 @@ public class Product {
     )
     @Builder.Default
     private Set<ProductImage> images = new HashSet<>();
-
-    // --- RELATION WISHLIST ITEMS ---
-    @OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
-    @JsonIgnore // on ne renvoie pas la liste des wishlistItems pour éviter les boucles JSON
-    @Builder.Default
-    private Set<WishlistItem> wishlistItems = new HashSet<>();
 
     public void addImage(ProductImage image) {
         images.add(image);
