@@ -1,34 +1,42 @@
-// src/main/java/com/enoch/leathercraft/entities/WishlistItem.java
 package com.enoch.leathercraft.entities;
 
 import com.enoch.leathercraft.auth.domain.User;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+import java.time.Instant;
 
 @Entity
 @Table(name = "wishlist_items")
 @Getter
 @Setter
 @NoArgsConstructor
-@AllArgsConstructor
-@Builder
-// On ignore aussi les champs internes Hibernate au cas où
-@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class WishlistItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ⬇️ on ne renvoie pas le user dans le JSON
-    @ManyToOne(fetch = FetchType.LAZY)
+    // 🔐 utilisateur
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
-    @JsonIgnore
     private User user;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // 👜 produit
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
+
+    // 🕒 date d'ajout en wishlist
+    @Column(name = "created_at") // ✅ surtout PAS nullable = false ici
+    private Instant createdAt;
+
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 }

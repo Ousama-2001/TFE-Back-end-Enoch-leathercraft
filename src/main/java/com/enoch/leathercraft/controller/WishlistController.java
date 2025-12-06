@@ -1,6 +1,9 @@
 // src/main/java/com/enoch/leathercraft/controller/WishlistController.java
 package com.enoch.leathercraft.controller;
 
+import com.enoch.leathercraft.auth.domain.User;
+import com.enoch.leathercraft.auth.repo.UserRepository;
+import com.enoch.leathercraft.dto.WishlistItemResponse;
 import com.enoch.leathercraft.entities.WishlistItem;
 import com.enoch.leathercraft.services.WishlistService;
 import lombok.RequiredArgsConstructor;
@@ -16,21 +19,35 @@ import java.util.List;
 public class WishlistController {
 
     private final WishlistService wishlistService;
+    private final UserRepository userRepository;
+
+    private User getCurrentUser(Authentication authentication) {
+        String email = authentication.getName();
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalStateException("Utilisateur introuvable pour l'email : " + email));
+    }
 
     @GetMapping
-    public List<WishlistItem> getWishlist(Authentication authentication) {
-        return wishlistService.getWishlist(authentication);
+    public List<WishlistItemResponse> getWishlist(Authentication authentication) {
+        User user = getCurrentUser(authentication);
+        List<WishlistItem> items = wishlistService.getWishlistForUser(user.getId());
+        return items.stream()
+                .map(WishlistItemResponse::fromEntity)
+                .toList();
     }
 
     @PostMapping("/{productId}")
-    public void addToWishlist(Authentication authentication,
-                              @PathVariable Long productId) {
-        wishlistService.addToWishlist(authentication, productId);
+    public WishlistItemResponse toggleWishlist(Authentication authentication,
+                                               @PathVariable Long productId) {
+        User user = getCurrentUser(authentication);
+        WishlistItem item = wishlistService.toggleProduct(user.getId(), productId);
+        return WishlistItemResponse.fromEntity(item);
     }
 
     @DeleteMapping("/{productId}")
     public void removeFromWishlist(Authentication authentication,
                                    @PathVariable Long productId) {
-        wishlistService.removeFromWishlist(authentication, productId);
+        User user = getCurrentUser(authentication);
+        wishlistService.removeFromWishlist(user.getId(), productId);
     }
 }
