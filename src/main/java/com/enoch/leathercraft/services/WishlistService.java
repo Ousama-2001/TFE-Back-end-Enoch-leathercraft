@@ -5,65 +5,91 @@ import com.enoch.leathercraft.auth.domain.User;
 import com.enoch.leathercraft.auth.repo.UserRepository;
 import com.enoch.leathercraft.entities.Product;
 import com.enoch.leathercraft.entities.WishlistItem;
+
 import com.enoch.leathercraft.repository.ProductRepository;
 import com.enoch.leathercraft.repository.WishlistItemRepository;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class WishlistService {
 
-    private final WishlistItemRepository wishlistItemRepository;
+    private final WishlistItemRepository wishlistRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
 
-    /**
-     * Retourne tous les items wishlist pour un utilisateur.
-     */
-    public List<WishlistItem> getWishlistForUser(Long userId) {
-        return wishlistItemRepository.findByUserId(userId);
-    }
+    /* ---------- HELPERS ---------- */
 
     /**
-     * Toggle : si le produit est déjà dans la wishlist -> on le retire,
-     * sinon on le crée.
+     * Dans ton JwtAuthFilter tu fais :
+     *  new UsernamePasswordAuthenticationToken(email, null, authorities)
+     * Donc ici le principal / getName() = email (String).
      */
-    @Transactional
-    public WishlistItem toggleProduct(Long userId, Long productId) {
-        Optional<WishlistItem> existingOpt =
-                wishlistItemRepository.findByUserIdAndProductId(userId, productId);
-
-        if (existingOpt.isPresent()) {
-            WishlistItem existing = existingOpt.get();
-            wishlistItemRepository.delete(existing);
-            return existing; // on renvoie l’item supprimé (le front ne s'en sert pas vraiment)
+    private User getCurrentUser(Authentication authentication) {
+        if (authentication == null) {
+            throw new IllegalStateException("Utilisateur non authentifié");
         }
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("Utilisateur introuvable"));
+        // email = sub du JWT
+        String email = authentication.getName(); // équivalent à (String) authentication.getPrincipal()
+
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalStateException("Utilisateur introuvable : " + email));
+    }
+
+    /* ---------- LECTURE ---------- */
+
+    @Transactional(readOnly = true)
+    public List<WishlistItem> getWishlist(Authentication authentication) {
+        User user = getCurrentUser(authentication);
+        // à adapter à ton repo : findByUserId, findAllByUser, etc.
+        return wishlistRepository.findAllByUserId(user.getId());
+    }
+
+    /* ---------- TOGGLE (like / unlike) ---------- */
+
+    @Transactional
+    public WishlistItem toggleWishlist(Authentication authentication, Long productId) {
+        User user = getCurrentUser(authentication);
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
+                .orElseThrow(() -> new IllegalArgumentException("Produit introuvable : " + productId));
+
+        WishlistItem existing = wishlistRepository
+                .findByUserIdAndProductId(user.getId(), productId)
+                .orElse(null);
+
+        if (existing != null) {
+            wishlistRepository.delete(existing);
+            return null; // côté front on saura que c’est un "unlike"
+        }
 
         WishlistItem item = new WishlistItem();
         item.setUser(user);
         item.setProduct(product);
         item.setCreatedAt(Instant.now());
 
-        return wishlistItemRepository.save(item);
+        return wishlistRepository.save(item);
     }
 
-    /**
-     * Supprime un produit de la wishlist pour un user.
-     */
+    /* ---------- SUPPRESSION D’UN SEUL PRODUIT ---------- */
+
     @Transactional
-    public void removeFromWishlist(Long userId, Long productId) {
-        wishlistItemRepository.deleteByUserIdAndProductId(userId, productId);
+    public void removeFromWishlist(Authentication authentication, Long productId) {
+        User user = getCurrentUser(authentication);
+        wishlistRepository.deleteByUserIdAndProductId(user.getId(), productId);
+    }
+
+    /* ---------- VIDER TOUTE LA WISHLIST ---------- */
+
+    @Transactional
+    public void clearWishlist(Authentication authentication) {
+        User user = getCurrentUser(authentication);
+        wishlistRepository.deleteAllByUserId(user.getId());
     }
 }

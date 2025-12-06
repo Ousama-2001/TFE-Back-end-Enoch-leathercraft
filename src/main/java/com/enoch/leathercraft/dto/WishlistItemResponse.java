@@ -1,3 +1,4 @@
+// src/main/java/com/enoch/leathercraft/dto/WishlistItemResponse.java
 package com.enoch.leathercraft.dto;
 
 import com.enoch.leathercraft.entities.Product;
@@ -5,26 +6,27 @@ import com.enoch.leathercraft.entities.ProductImage;
 import com.enoch.leathercraft.entities.WishlistItem;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public record WishlistItemResponse(
         Long id,
         ProductResponse product,
         Instant createdAt
 ) {
-
     public static WishlistItemResponse fromEntity(WishlistItem entity) {
-
         Product p = entity.getProduct();
 
-        // 🔥 On transforme Set<ProductImage> -> List<String> (urls)
+        // On transforme les ProductImage -> List<String> d’URL
         List<String> imageUrls = (p.getImages() == null)
-                ? List.of()
-                : p.getImages().stream()
-                .map(ProductImage::getUrl)
-                .toList();
+                ? Collections.emptyList()
+                : p.getImages()
+                .stream()
+                .map(ProductImage::getUrl)   // "/uploads/products/xxx.jpg"
+                .collect(Collectors.toList());
 
-        ProductResponse productResponse = ProductResponse.builder()
+        ProductResponse productDto = ProductResponse.builder()
                 .id(p.getId())
                 .sku(p.getSku())
                 .name(p.getName())
@@ -35,13 +37,13 @@ public record WishlistItemResponse(
                 .currency(p.getCurrency())
                 .weightGrams(p.getWeightGrams())
                 .isActive(p.getIsActive())
+                .imageUrls(imageUrls)
                 .stockQuantity(p.getStockQuantity())
-                .imageUrls(imageUrls)   // ✅ ICI : plus de getImageUrls()
                 .build();
 
         return new WishlistItemResponse(
                 entity.getId(),
-                productResponse,
+                productDto,
                 entity.getCreatedAt()
         );
     }

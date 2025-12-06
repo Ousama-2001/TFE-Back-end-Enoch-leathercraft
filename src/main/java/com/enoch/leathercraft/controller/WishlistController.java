@@ -1,12 +1,11 @@
 // src/main/java/com/enoch/leathercraft/controller/WishlistController.java
 package com.enoch.leathercraft.controller;
 
-import com.enoch.leathercraft.auth.domain.User;
-import com.enoch.leathercraft.auth.repo.UserRepository;
 import com.enoch.leathercraft.dto.WishlistItemResponse;
 import com.enoch.leathercraft.entities.WishlistItem;
 import com.enoch.leathercraft.services.WishlistService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,18 +18,10 @@ import java.util.List;
 public class WishlistController {
 
     private final WishlistService wishlistService;
-    private final UserRepository userRepository;
-
-    private User getCurrentUser(Authentication authentication) {
-        String email = authentication.getName();
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalStateException("Utilisateur introuvable pour l'email : " + email));
-    }
 
     @GetMapping
     public List<WishlistItemResponse> getWishlist(Authentication authentication) {
-        User user = getCurrentUser(authentication);
-        List<WishlistItem> items = wishlistService.getWishlistForUser(user.getId());
+        List<WishlistItem> items = wishlistService.getWishlist(authentication);
         return items.stream()
                 .map(WishlistItemResponse::fromEntity)
                 .toList();
@@ -39,15 +30,21 @@ public class WishlistController {
     @PostMapping("/{productId}")
     public WishlistItemResponse toggleWishlist(Authentication authentication,
                                                @PathVariable Long productId) {
-        User user = getCurrentUser(authentication);
-        WishlistItem item = wishlistService.toggleProduct(user.getId(), productId);
-        return WishlistItemResponse.fromEntity(item);
+        WishlistItem item = wishlistService.toggleWishlist(authentication, productId);
+        // Si toggle = "unlike", le service peut retourner null → côté front on se base sur la liste mise à jour
+        return (item != null) ? WishlistItemResponse.fromEntity(item) : null;
     }
 
     @DeleteMapping("/{productId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removeFromWishlist(Authentication authentication,
                                    @PathVariable Long productId) {
-        User user = getCurrentUser(authentication);
-        wishlistService.removeFromWishlist(user.getId(), productId);
+        wishlistService.removeFromWishlist(authentication, productId);
+    }
+
+    @DeleteMapping("/clear")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void clearWishlist(Authentication authentication) {
+        wishlistService.clearWishlist(authentication);
     }
 }

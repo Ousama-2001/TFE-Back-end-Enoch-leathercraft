@@ -1,31 +1,29 @@
+// src/main/java/com/enoch/leathercraft/entities/ProductImage.java
 package com.enoch.leathercraft.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
-@Entity @Table(name="product_images")
+@Entity
+@Table(name="product_images")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ProductImage {
-    @Id @GeneratedValue(strategy=GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy=GenerationType.IDENTITY)
     private Long id;
 
-    // --- MODIFICATION MAJEURE : Remplacement de Long productId par l'entité Product ---
-
-    // Relation Many-to-One avec Product (plusieurs images pour un seul produit)
-    // Le champ `name = "product_id"` crée la colonne de clé étrangère dans cette table.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
+    @JsonIgnore              // 🔴 Évite la boucle ProductImage -> Product -> images -> ...
     private Product product;
 
-    // --- FIN MODIFICATION ---
-
-
     @Column(nullable=false, length=500)
-    private String url; // Le chemin d'accès public (ex: /uploads/products/image.jpg)
+    private String url;
 
     private String altText;
 
-    // Initialiser la position et l'isPrimary pour éviter les NullPointers
     @Builder.Default
     private Integer position = 0;
 
