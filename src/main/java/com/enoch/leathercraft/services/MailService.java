@@ -1,5 +1,9 @@
+// src/main/java/com/enoch/leathercraft/services/MailService.java
 package com.enoch.leathercraft.services;
 
+import com.enoch.leathercraft.auth.domain.Role;
+import com.enoch.leathercraft.auth.domain.User;
+import com.enoch.leathercraft.auth.repo.UserRepository;
 import com.enoch.leathercraft.entities.Order;
 import com.enoch.leathercraft.entities.OrderItem;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +14,9 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +24,7 @@ import java.math.BigDecimal;
 public class MailService {
 
     private final JavaMailSender mailSender;
+    private final UserRepository userRepository; // 🔥 injection repo users
 
     @Value("${app.mail.from:no-reply@enoch-leathercraft.com}")
     private String from;
@@ -135,7 +143,7 @@ public class MailService {
         return sb.toString();
     }
 
-// =============== DEMANDE RÉACTIVATION COMPTE ===============
+    // =============== DEMANDE RÉACTIVATION COMPTE ===============
 
     public void sendReactivationRequestEmailToAdmin(String userEmail, String message) {
 
@@ -167,4 +175,73 @@ public class MailService {
         }
     }
 
+    // =============== 🔥 DEMANDE DE RETOUR ===============
+
+    public void sendReturnRequested(Order order) {
+        try {
+            // Chercher tous les ADMIN + SUPER_ADMIN actifs
+            List<User> admins = userRepository.findByRoleInAndDeletedFalse(
+                    List.of(Role.ADMIN, Role.SUPER_ADMIN)
+            );
+
+            Set<String> destinations = new HashSet<>();
+
+            for (User admin : admins) {
+                if (admin.getEmail() != null && !admin.getEmail().isBlank()) {
+                    destinations.add(admin.getEmail());
+                }
+            }
+
+            // On ajoute l’email superadmin configuré si présent
+            if (superAdminEmail != null && !superAdminEmail.isBlank()) {
+                destinations.add(superAdminEmail);
+            }
+
+            if (destinations.isEmpty()) {
+                log.warn("Aucun admin/superadmin trouvé pour notifier la demande de retour {}", order.getReference());
+                return;
+            }
+
+            String subject = "Demande de retour – commande " + order.getReference();
+
+            String body = """
+                    Bonjour,
+
+                    Une DEMANDE DE RETOUR vient d'être effectuée.
+
+                    Référence commande : %s
+                    Client : %s %s (%s)
+                    Montant : %s €
+                    Statut actuel : %s
+
+                    Notes / motif de retour :
+                    %s
+
+                    Rendez-vous dans le back-office administrateur (onglet Commandes / Retours)
+                    pour traiter cette demande.
+
+                    Enoch Leathercraft – Notification automatique
+                    """.formatted(
+                    safe(order.getReference()),
+                    safe(order.getFirstName()),
+                    safe(order.getLastName()),
+                    safe(order.getCustomerEmail()),
+                    order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO,
+                    String.valueOf(order.getStatus()),
+                    safe(order.getNotes())
+            );
+
+            for (String to : destinations) {
+                sendSimpleMail(to, subject, body);
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Erreur lors de l'envoi de la notification de retour pour {} : {}",
+                    order.getReference(), e.getMessage());
+        }
+    }
+
+    private String safe(String v) {
+        return v != null ? v : "";
+    }
 }

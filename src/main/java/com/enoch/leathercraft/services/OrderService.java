@@ -254,7 +254,8 @@ public class OrderService {
         order.setStatus(OrderStatus.RETURN_REQUESTED);
         Order saved = orderRepository.save(order);
 
-        // mailService.sendReturnRequested(saved); // si tu veux plus tard
+        // 🔥 mail aux admins / super admin
+        mailService.sendReturnRequested(saved);
 
         return toDto(saved);
     }
