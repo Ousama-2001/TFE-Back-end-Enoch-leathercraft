@@ -5,5 +5,6 @@ public enum OrderStatus {
     PAID,       // Payé (si tu gères le paiement direct)
     SHIPPED,    // Expédié
     DELIVERED,  // Livré (C'est celui-ci qui doit exister pour que le bouton marche)
-    CANCELLED   // Annulé
-}
+    CANCELLED,   // Annulé
+    RETURN_REQUESTED
+    }

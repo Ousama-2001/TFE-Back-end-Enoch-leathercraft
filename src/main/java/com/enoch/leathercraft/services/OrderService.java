@@ -5,6 +5,7 @@ import com.enoch.leathercraft.dto.CheckoutRequest;
 import com.enoch.leathercraft.dto.OrderItemResponse;
 import com.enoch.leathercraft.dto.OrderResponse;
 import com.enoch.leathercraft.dto.StripeCheckoutResponse;
+import com.enoch.leathercraft.dto.ReturnRequest;
 import com.enoch.leathercraft.entities.*;
 import com.enoch.leathercraft.repository.CartRepository;
 import com.enoch.leathercraft.repository.OrderRepository;
@@ -33,7 +34,7 @@ public class OrderService {
     private final CartService cartService;
     private final ProductRepository productRepository;
     private final MailService mailService;
-    private final StripeService stripeService; // 🔥 on injecte ton StripeService
+    private final StripeService stripeService; // Stripe centralisé
 
     // ------------------------------------------------------
     // CREATE ORDER DEPUIS PANIER
@@ -229,6 +230,36 @@ public class OrderService {
     }
 
     // ------------------------------------------------------
+    // 🔥 DEMANDER UN RETOUR (commande livrée)
+    // ------------------------------------------------------
+    @Transactional
+    public OrderResponse requestReturn(Long orderId, String userEmail, ReturnRequest request) {
+        Order order = getOrderForUserOrThrow(orderId, userEmail);
+
+        if (order.getStatus() != OrderStatus.DELIVERED) {
+            throw new IllegalStateException("Seules les commandes livrées peuvent faire l'objet d'un retour.");
+        }
+
+        // On stocke le motif dans "notes" pour ne pas modifier le schéma
+        StringBuilder notes = new StringBuilder(
+                order.getNotes() != null ? order.getNotes() + "\n\n" : ""
+        );
+        notes.append("=== DEMANDE DE RETOUR ===\n");
+        notes.append("Motif : ").append(request.reason() != null ? request.reason() : "Non précisé").append("\n");
+        if (request.comment() != null && !request.comment().isBlank()) {
+            notes.append("Commentaire : ").append(request.comment()).append("\n");
+        }
+        order.setNotes(notes.toString());
+
+        order.setStatus(OrderStatus.RETURN_REQUESTED);
+        Order saved = orderRepository.save(order);
+
+        // mailService.sendReturnRequested(saved); // si tu veux plus tard
+
+        return toDto(saved);
+    }
+
+    // ------------------------------------------------------
     // 🔥 CRÉER SESSION STRIPE POUR COMMANDE EXISTANTE
     // ------------------------------------------------------
     @Transactional
@@ -241,7 +272,6 @@ public class OrderService {
             throw new IllegalStateException("Seules les commandes en attente peuvent être payées.");
         }
 
-        // On réutilise ta logique Stripe centralisée dans StripeService
         OrderResponse dto = toDto(order);
         String checkoutUrl = stripeService.createCheckoutSession(dto);
 

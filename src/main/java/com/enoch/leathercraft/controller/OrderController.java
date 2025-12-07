@@ -4,6 +4,7 @@ package com.enoch.leathercraft.controller;
 import com.enoch.leathercraft.dto.CheckoutRequest;
 import com.enoch.leathercraft.dto.OrderResponse;
 import com.enoch.leathercraft.dto.StripeCheckoutResponse;
+import com.enoch.leathercraft.dto.ReturnRequest;
 import com.enoch.leathercraft.services.OrderService;
 import com.stripe.exception.StripeException;
 import lombok.RequiredArgsConstructor;
@@ -59,8 +60,8 @@ public class OrderController {
     }
 
     /**
-     * Payer une commande en attente :
-     * crée une session Stripe et renvoie l'URL de checkout.
+     * Payer une commande en attente : crée une session Stripe
+     * et renvoie l'URL de checkout.
      */
     @PostMapping("/{id}/pay")
     public ResponseEntity<StripeCheckoutResponse> payOrder(
@@ -70,6 +71,20 @@ public class OrderController {
         String email = authentication.getName();
         StripeCheckoutResponse resp = orderService.createStripeCheckoutForOrder(id, email);
         return ResponseEntity.ok(resp);
+    }
+
+    /**
+     * 🔥 Demande de retour sur une commande livrée
+     */
+    @PostMapping("/{id}/return")
+    public ResponseEntity<OrderResponse> requestReturn(
+            Authentication authentication,
+            @PathVariable Long id,
+            @RequestBody ReturnRequest request
+    ) {
+        String email = authentication.getName();
+        OrderResponse updated = orderService.requestReturn(id, email, request);
+        return ResponseEntity.ok(updated);
     }
 
     @GetMapping("/{id}/invoice")
