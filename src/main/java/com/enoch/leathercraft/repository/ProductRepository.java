@@ -14,6 +14,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     Optional<Product> findBySlug(String slug);
 
+    // Charge toujours les images
     @Override
     @EntityGraph(attributePaths = {"images"})
     List<Product> findAll();
@@ -30,17 +31,49 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @EntityGraph(attributePaths = {"images"})
     List<Product> findByDeletedTrueOrderByUpdatedAtDesc();
 
-    // 🌟 Produits actifs filtrés par catégorie (slug)
+    // 🌟 Produits actifs filtrés par une seule catégorie (slug)
     @EntityGraph(attributePaths = {"images"})
     @Query("""
            SELECT DISTINCT p
-           FROM Product p, ProductCategory pc, Category c
-           WHERE p.id = pc.productId
-             AND c.id = pc.categoryId
-             AND p.deleted = false
+           FROM Product p
+           JOIN ProductCategory pc ON pc.productId = p.id
+           JOIN Category c ON c.id = pc.categoryId
+           WHERE p.deleted = false
              AND (p.isActive = true OR p.isActive IS NULL)
              AND LOWER(c.slug) = LOWER(:slug)
            ORDER BY p.name ASC
            """)
     List<Product> findActiveByCategorySlug(@Param("slug") String slug);
+
+    // 🌟 Produits actifs filtrés par "segment" (slug) → Homme, Femme, etc.
+    @EntityGraph(attributePaths = {"images"})
+    @Query("""
+           SELECT DISTINCT p
+           FROM Product p
+           JOIN ProductCategory pcSeg ON pcSeg.productId = p.id
+           JOIN Category cSeg ON cSeg.id = pcSeg.categoryId
+           WHERE p.deleted = false
+             AND (p.isActive = true OR p.isActive IS NULL)
+             AND LOWER(cSeg.slug) = LOWER(:segmentSlug)
+           ORDER BY p.name ASC
+           """)
+    List<Product> findActiveBySegmentSlug(@Param("segmentSlug") String segmentSlug);
+
+    // 🌟 Produits actifs filtrés par segment + type
+    @EntityGraph(attributePaths = {"images"})
+    @Query("""
+           SELECT DISTINCT p
+           FROM Product p
+           JOIN ProductCategory pcSeg ON pcSeg.productId = p.id
+           JOIN Category cSeg ON cSeg.id = pcSeg.categoryId
+           JOIN ProductCategory pcCat ON pcCat.productId = p.id
+           JOIN Category cCat ON cCat.id = pcCat.categoryId
+           WHERE p.deleted = false
+             AND (p.isActive = true OR p.isActive IS NULL)
+             AND LOWER(cSeg.slug) = LOWER(:segmentSlug)
+             AND LOWER(cCat.slug) = LOWER(:categorySlug)
+           ORDER BY p.name ASC
+           """)
+    List<Product> findActiveBySegmentAndCategory(@Param("segmentSlug") String segmentSlug,
+                                                 @Param("categorySlug") String categorySlug);
 }

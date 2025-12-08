@@ -1,9 +1,14 @@
+// src/main/java/com/enoch/leathercraft/services/ProductService.java
 package com.enoch.leathercraft.services;
 
 import com.enoch.leathercraft.dto.ProductCreateRequest;
 import com.enoch.leathercraft.dto.ProductResponse;
+import com.enoch.leathercraft.entities.Category;
 import com.enoch.leathercraft.entities.Product;
+import com.enoch.leathercraft.entities.ProductCategory;
 import com.enoch.leathercraft.entities.ProductImage;
+import com.enoch.leathercraft.repository.CategoryRepository;
+import com.enoch.leathercraft.repository.ProductCategoryRepository;
 import com.enoch.leathercraft.repository.ProductImageRepository;
 import com.enoch.leathercraft.repository.ProductRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -12,8 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,6 +27,8 @@ public class ProductService {
 
     private final ProductRepository repo;
     private final ProductImageRepository imageRepo;
+    private final CategoryRepository categoryRepository;
+    private final ProductCategoryRepository productCategoryRepository;
 
     // === Tous les produits actifs ===
     public List<ProductResponse> getAll() {
@@ -32,10 +38,26 @@ public class ProductService {
                 .toList();
     }
 
-    // === Produits par catégorie (slug) ===
-    public List<ProductResponse> getByCategorySlug(String slug) {
-        return repo.findActiveByCategorySlug(slug)
-                .stream()
+    // === Produits pour le catalogue (segment + catégorie en option) ===
+    public List<ProductResponse> getForCatalog(String segmentSlug, String categorySlug) {
+        boolean hasSegment = segmentSlug != null && !segmentSlug.isBlank();
+        boolean hasCategory = categorySlug != null && !categorySlug.isBlank();
+
+        if (!hasSegment && !hasCategory) {
+            return getAll();
+        }
+
+        List<Product> products;
+
+        if (hasSegment && hasCategory) {
+            products = repo.findActiveBySegmentAndCategory(segmentSlug, categorySlug);
+        } else if (hasSegment) {
+            products = repo.findActiveBySegmentSlug(segmentSlug);
+        } else {
+            products = repo.findActiveByCategorySlug(categorySlug);
+        }
+
+        return products.stream()
                 .map(this::toDto)
                 .toList();
     }
@@ -74,6 +96,10 @@ public class ProductService {
         }
 
         p = repo.save(p);
+
+        // 🔥 Lier les catégories (segment + type)
+        updateProductCategories(p.getId(), req.getSegmentCategoryId(), req.getTypeCategoryId());
+
         return toDto(p);
     }
 
@@ -89,13 +115,9 @@ public class ProductService {
         existing.setDescription(req.getDescription());
         existing.setMaterial(req.getMaterial());
         existing.setPrice(req.getPrice());
-        existing.setCurrency(
-                req.getCurrency() != null ? req.getCurrency() : existing.getCurrency()
-        );
+        existing.setCurrency(req.getCurrency() != null ? req.getCurrency() : existing.getCurrency());
         existing.setWeightGrams(req.getWeightGrams());
-        existing.setIsActive(
-                req.getIsActive() != null ? req.getIsActive() : existing.getIsActive()
-        );
+        existing.setIsActive(req.getIsActive() != null ? req.getIsActive() : existing.getIsActive());
         existing.setUpdatedAt(Instant.now());
 
         if (req.getStockQuantity() != null) {
@@ -104,7 +126,7 @@ public class ProductService {
 
         if (newImageUrl != null) {
             Set<ProductImage> images = existing.getImages();
-            if (!images.isEmpty()) {
+            if (images != null && !images.isEmpty()) {
                 ProductImage img = images.iterator().next();
                 img.setUrl(newImageUrl);
                 img.setAltText(existing.getName());
@@ -120,6 +142,10 @@ public class ProductService {
         }
 
         existing = repo.save(existing);
+
+        // 🔥 Met à jour les catégories
+        updateProductCategories(existing.getId(), req.getSegmentCategoryId(), req.getTypeCategoryId());
+
         return toDto(existing);
     }
 
@@ -128,7 +154,6 @@ public class ProductService {
     public void delete(Long id) {
         Product p = repo.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
-
         p.setDeleted(true);
         p.setIsActive(false);
         p.setUpdatedAt(Instant.now());
@@ -143,17 +168,9 @@ public class ProductService {
 
         p.setStockQuantity(newQty != null ? newQty : 0);
         p.setUpdatedAt(Instant.now());
-        p = repo.save(p);
+        repo.save(p);
 
         return toDto(p);
-    }
-
-    // === Produits avec stock faible (pour l'admin) ===
-    public List<ProductResponse> findLowStock(int threshold) {
-        return repo.findByDeletedFalse().stream()
-                .filter(p -> p.getStockQuantity() != null && p.getStockQuantity() <= threshold)
-                .map(this::toDto)
-                .toList();
     }
 
     // === Produits archivés ===
@@ -173,9 +190,52 @@ public class ProductService {
         p.setDeleted(false);
         p.setIsActive(true);
         p.setUpdatedAt(Instant.now());
-        p = repo.save(p);
+        repo.save(p);
 
         return toDto(p);
+    }
+
+    // === Gestion des catégories d’un produit ===
+    @Transactional
+    protected void updateProductCategories(Long productId, Long segmentCategoryId, Long typeCategoryId) {
+        // On supprime les anciens liens
+        productCategoryRepository.deleteByProductId(productId);
+
+        // Segment (Homme / Femme / Petite maroquinerie)
+        if (segmentCategoryId != null) {
+            checkCategoryExists(segmentCategoryId);
+            ProductCategory pcSeg = ProductCategory.builder()
+                    .productId(productId)
+                    .categoryId(segmentCategoryId)
+                    .isPrimary(true)
+                    .build();
+            productCategoryRepository.save(pcSeg);
+        }
+
+        // Type (Sacs-sacoches / Ceintures / Portefeuilles ...)
+        if (typeCategoryId != null) {
+            checkCategoryExists(typeCategoryId);
+            ProductCategory pcType = ProductCategory.builder()
+                    .productId(productId)
+                    .categoryId(typeCategoryId)
+                    .isPrimary(false)
+                    .build();
+            productCategoryRepository.save(pcType);
+        }
+    }
+
+    private void checkCategoryExists(Long catId) {
+        if (!categoryRepository.existsById(catId)) {
+            throw new EntityNotFoundException("Catégorie introuvable (id=" + catId + ")");
+        }
+    }
+
+    // === Produits en stock bas (pour /admin/products/low-stock) ===
+    public List<ProductResponse> findLowStock(int threshold) {
+        return repo.findByDeletedFalse().stream()
+                .filter(p -> p.getStockQuantity() != null && p.getStockQuantity() <= threshold)
+                .map(this::toDto)
+                .toList();
     }
 
     // === DTO ===
@@ -183,6 +243,38 @@ public class ProductService {
         List<String> urls = p.getImages().stream()
                 .map(ProductImage::getUrl)
                 .collect(Collectors.toList());
+
+        // Récupère les liens de catégories existants
+        List<ProductCategory> links = productCategoryRepository.findByProductId(p.getId());
+
+        Long segmentCatId = null;
+        Long typeCatId = null;
+
+        for (ProductCategory link : links) {
+            if (Boolean.TRUE.equals(link.getIsPrimary())) {
+                segmentCatId = link.getCategoryId();
+            } else {
+                typeCatId = link.getCategoryId();
+            }
+        }
+
+        String segmentSlug = null;
+        String typeSlug = null;
+
+        List<Long> catIds = new ArrayList<>();
+        if (segmentCatId != null) catIds.add(segmentCatId);
+        if (typeCatId != null) catIds.add(typeCatId);
+
+        if (!catIds.isEmpty()) {
+            List<Category> cats = categoryRepository.findAllById(catIds);
+            for (Category c : cats) {
+                if (segmentCatId != null && c.getId().equals(segmentCatId)) {
+                    segmentSlug = c.getSlug();
+                } else if (typeCatId != null && c.getId().equals(typeCatId)) {
+                    typeSlug = c.getSlug();
+                }
+            }
+        }
 
         return ProductResponse.builder()
                 .id(p.getId())
@@ -197,6 +289,10 @@ public class ProductService {
                 .isActive(p.getIsActive())
                 .imageUrls(urls)
                 .stockQuantity(p.getStockQuantity())
+                .segmentCategoryId(segmentCatId)
+                .typeCategoryId(typeCatId)
+                .segmentSlug(segmentSlug)
+                .typeSlug(typeSlug)
                 .build();
     }
 }

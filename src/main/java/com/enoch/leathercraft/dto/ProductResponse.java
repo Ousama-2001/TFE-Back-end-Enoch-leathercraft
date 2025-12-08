@@ -1,10 +1,16 @@
+// src/main/java/com/enoch/leathercraft/dto/ProductResponse.java
 package com.enoch.leathercraft.dto;
 
 import lombok.*;
-import java.math.BigDecimal;
-import java.util.List; // Import nécessaire
 
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+import java.math.BigDecimal;
+import java.util.List;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class ProductResponse {
     private Long id;
     private String sku;
@@ -19,4 +25,11 @@ public class ProductResponse {
     private List<String> imageUrls;
     private Integer stockQuantity;
 
+    // 🔥 Pour pré-remplir le formulaire admin
+    private Long segmentCategoryId;
+    private Long typeCategoryId;
+
+    // 🔥 Très utile pour le front catalogue
+    private String segmentSlug;  // ex: "homme"
+    private String typeSlug;     // ex: "sacs-sacoches"
 }
