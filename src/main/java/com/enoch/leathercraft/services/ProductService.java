@@ -1,4 +1,3 @@
-// src/main/java/com/enoch/leathercraft/services/ProductService.java
 package com.enoch.leathercraft.services;
 
 import com.enoch.leathercraft.dto.ProductCreateRequest;
@@ -25,9 +24,17 @@ public class ProductService {
     private final ProductRepository repo;
     private final ProductImageRepository imageRepo;
 
-    // === CATALOGUE PUBLIC (et admin via /api/products) ===
+    // === Tous les produits actifs ===
     public List<ProductResponse> getAll() {
         return repo.findByIsActiveTrueAndDeletedFalseOrderByNameAsc()
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    // === Produits par catégorie (slug) ===
+    public List<ProductResponse> getByCategorySlug(String slug) {
+        return repo.findActiveByCategorySlug(slug)
                 .stream()
                 .map(this::toDto)
                 .toList();
@@ -57,26 +64,25 @@ public class ProductService {
                 .build();
 
         if (imageUrl != null) {
-            ProductImage image = ProductImage.builder()
+            ProductImage img = ProductImage.builder()
                     .url(imageUrl)
                     .altText(req.getName())
                     .position(0)
                     .isPrimary(true)
                     .build();
-            p.addImage(image);
+            p.addImage(img);
         }
 
         p = repo.save(p);
         return toDto(p);
     }
 
-    // === UPDATE (OK même si le produit est déjà commandé) ===
+    // === UPDATE ===
     @Transactional
     public ProductResponse update(Long id, ProductCreateRequest req, String newImageUrl) {
         Product existing = repo.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
 
-        // Mise à jour des champs texte
         existing.setSku(req.getSku());
         existing.setName(req.getName());
         existing.setSlug(req.getSlug());
@@ -92,27 +98,24 @@ public class ProductService {
         );
         existing.setUpdatedAt(Instant.now());
 
-        // Stock si fourni
         if (req.getStockQuantity() != null) {
             existing.setStockQuantity(req.getStockQuantity());
         }
 
-        // Image principale
         if (newImageUrl != null) {
             Set<ProductImage> images = existing.getImages();
-
-            if (images != null && !images.isEmpty()) {
+            if (!images.isEmpty()) {
                 ProductImage img = images.iterator().next();
                 img.setUrl(newImageUrl);
                 img.setAltText(existing.getName());
             } else {
-                ProductImage newImg = ProductImage.builder()
+                ProductImage img = ProductImage.builder()
                         .url(newImageUrl)
                         .altText(existing.getName())
                         .position(0)
                         .isPrimary(true)
                         .build();
-                existing.addImage(newImg);
+                existing.addImage(img);
             }
         }
 
@@ -132,19 +135,20 @@ public class ProductService {
         repo.save(p);
     }
 
-    // === STOCK ADMIN ===
+    // === STOCK ===
     @Transactional
-    public ProductResponse updateStock(Long productId, Integer newQuantity) {
-        Product p = repo.findByIdAndDeletedFalse(productId)
+    public ProductResponse updateStock(Long id, Integer newQty) {
+        Product p = repo.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
 
-        p.setStockQuantity(newQuantity != null ? newQuantity : 0);
+        p.setStockQuantity(newQty != null ? newQty : 0);
         p.setUpdatedAt(Instant.now());
         p = repo.save(p);
+
         return toDto(p);
     }
 
-    // === Produits en stock bas (sans les supprimés) ===
+    // === Produits avec stock faible (pour l'admin) ===
     public List<ProductResponse> findLowStock(int threshold) {
         return repo.findByDeletedFalse().stream()
                 .filter(p -> p.getStockQuantity() != null && p.getStockQuantity() <= threshold)
@@ -152,7 +156,7 @@ public class ProductService {
                 .toList();
     }
 
-    // === ✅ Produits archivés (soft deleted) ===
+    // === Produits archivés ===
     public List<ProductResponse> getArchived() {
         return repo.findByDeletedTrueOrderByUpdatedAtDesc()
                 .stream()
@@ -160,23 +164,23 @@ public class ProductService {
                 .toList();
     }
 
-    // === ✅ Restaurer un produit archivé ===
+    // === Restaurer ===
     @Transactional
     public ProductResponse restore(Long id) {
         Product p = repo.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
 
         p.setDeleted(false);
-        p.setIsActive(true); // on le remet actif
+        p.setIsActive(true);
         p.setUpdatedAt(Instant.now());
-
         p = repo.save(p);
+
         return toDto(p);
     }
 
-    // === Mapping vers DTO ===
+    // === DTO ===
     private ProductResponse toDto(Product p) {
-        List<String> imageUrls = p.getImages().stream()
+        List<String> urls = p.getImages().stream()
                 .map(ProductImage::getUrl)
                 .collect(Collectors.toList());
 
@@ -191,7 +195,7 @@ public class ProductService {
                 .currency(p.getCurrency())
                 .weightGrams(p.getWeightGrams())
                 .isActive(p.getIsActive())
-                .imageUrls(imageUrls)
+                .imageUrls(urls)
                 .stockQuantity(p.getStockQuantity())
                 .build();
     }
