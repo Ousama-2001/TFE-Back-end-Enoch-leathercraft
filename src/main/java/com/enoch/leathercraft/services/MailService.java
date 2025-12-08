@@ -24,7 +24,7 @@ import java.util.Set;
 public class MailService {
 
     private final JavaMailSender mailSender;
-    private final UserRepository userRepository; // 🔥 injection repo users
+    private final UserRepository userRepository;
 
     @Value("${app.mail.from:no-reply@enoch-leathercraft.com}")
     private String from;
@@ -144,9 +144,7 @@ public class MailService {
     }
 
     // =============== DEMANDE RÉACTIVATION COMPTE ===============
-
     public void sendReactivationRequestEmailToAdmin(String userEmail, String message) {
-
         try {
             SimpleMailMessage msg = new SimpleMailMessage();
             msg.setTo("saidenoch@gmail.com");
@@ -175,11 +173,9 @@ public class MailService {
         }
     }
 
-    // =============== 🔥 DEMANDE DE RETOUR ===============
-
+    // =============== 🔥 DEMANDE DE RETOUR (admins) ===============
     public void sendReturnRequested(Order order) {
         try {
-            // Chercher tous les ADMIN + SUPER_ADMIN actifs
             List<User> admins = userRepository.findByRoleInAndDeletedFalse(
                     List.of(Role.ADMIN, Role.SUPER_ADMIN)
             );
@@ -192,7 +188,6 @@ public class MailService {
                 }
             }
 
-            // On ajoute l’email superadmin configuré si présent
             if (superAdminEmail != null && !superAdminEmail.isBlank()) {
                 destinations.add(superAdminEmail);
             }
@@ -241,6 +236,150 @@ public class MailService {
         }
     }
 
+    // =============== 🔥 RETOUR ACCEPTÉ (client) ===============
+    public void sendReturnApprovedToCustomer(Order order) {
+        String subject = "Retour accepté – commande " + safe(order.getReference());
+
+        String body = """
+                Bonjour,
+
+                Votre demande de retour pour la commande %s a été ACCEPTÉE.
+
+                Vous pouvez renvoyer votre colis à l'adresse suivante :
+
+                Enoch Leathercraft – Service Retours
+                Rue de la Maroquinerie 42
+                1000 Bruxelles
+                Belgique
+
+                Merci d'indiquer clairement la référence de commande : %s
+
+                Dès réception et contrôle des articles, nous traiterons votre remboursement.
+
+                Enoch Leathercraft
+                """.formatted(
+                safe(order.getReference()),
+                safe(order.getReference())
+        );
+
+        sendSimpleMail(order.getCustomerEmail(), subject, body);
+    }
+
+    // =============== 🔥 RETOUR REFUSÉ (client) ===============
+    public void sendReturnRejectedToCustomer(Order order, String adminReason) {
+        String subject = "Retour refusé – commande " + safe(order.getReference());
+
+        String reason = (adminReason != null && !adminReason.isBlank())
+                ? adminReason
+                : "Aucune raison précise n'a été fournie.";
+
+        String body = """
+                Bonjour,
+
+                Votre demande de retour pour la commande %s a été REFUSÉE.
+
+                Raison fournie par notre équipe :
+                %s
+
+                Si vous pensez qu'il s'agit d'une erreur, vous pouvez répondre à cet email.
+
+                Enoch Leathercraft
+                """.formatted(
+                safe(order.getReference()),
+                reason
+        );
+
+        sendSimpleMail(order.getCustomerEmail(), subject, body);
+    }
+
+    // =============== 💸 COMMANDE PAYÉE ANNULÉE (client) ===============
+    public void sendPaidOrderCancelledToCustomer(Order order) {
+        String subject = "Commande annulée – " + safe(order.getReference());
+
+        String body = """
+                Bonjour,
+
+                Votre commande %s, qui avait été payée, a été ANNULÉE.
+
+                Un remboursement sera traité sur votre moyen de paiement initial selon nos conditions
+                (délai bancaire habituel).
+
+                Référence commande : %s
+                Montant : %s €
+
+                Si vous n'êtes pas à l'origine de cette annulation ou si vous avez une question,
+                vous pouvez répondre à cet email.
+
+                Enoch Leathercraft
+                """.formatted(
+                safe(order.getReference()),
+                safe(order.getReference()),
+                order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO
+        );
+
+        sendSimpleMail(order.getCustomerEmail(), subject, body);
+    }
+
+    // =============== 💸 COMMANDE PAYÉE ANNULÉE (admins) ===============
+    public void sendPaidOrderCancelledToAdmins(Order order) {
+        try {
+            List<User> admins = userRepository.findByRoleInAndDeletedFalse(
+                    List.of(Role.ADMIN, Role.SUPER_ADMIN)
+            );
+
+            Set<String> destinations = new HashSet<>();
+
+            for (User admin : admins) {
+                if (admin.getEmail() != null && !admin.getEmail().isBlank()) {
+                    destinations.add(admin.getEmail());
+                }
+            }
+
+            if (superAdminEmail != null && !superAdminEmail.isBlank()) {
+                destinations.add(superAdminEmail);
+            }
+
+            if (destinations.isEmpty()) {
+                log.warn("Aucun admin/superadmin trouvé pour notifier l'annulation payée {}", order.getReference());
+                return;
+            }
+
+            String subject = "Commande payée annulée – " + safe(order.getReference());
+
+            String body = """
+                    Bonjour,
+
+                    Une COMMANDE PAYÉE vient d'être ANNULÉE par le client.
+
+                    Référence : %s
+                    Client    : %s %s (%s)
+                    Montant   : %s €
+
+                    Statut actuel : %s
+
+                    Merci de vérifier le traitement du remboursement dans votre interface de paiement.
+
+                    Enoch Leathercraft – Notification automatique
+                    """.formatted(
+                    safe(order.getReference()),
+                    safe(order.getFirstName()),
+                    safe(order.getLastName()),
+                    safe(order.getCustomerEmail()),
+                    order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO,
+                    String.valueOf(order.getStatus())
+            );
+
+            for (String to : destinations) {
+                sendSimpleMail(to, subject, body);
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Erreur envoi mail commande payée annulée pour {} : {}",
+                    order.getReference(), e.getMessage());
+        }
+    }
+
+    // ==================== UTILS =======================
     private String safe(String v) {
         return v != null ? v : "";
     }

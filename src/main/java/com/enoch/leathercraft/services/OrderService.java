@@ -34,7 +34,7 @@ public class OrderService {
     private final CartService cartService;
     private final ProductRepository productRepository;
     private final MailService mailService;
-    private final StripeService stripeService; // Stripe centralisé
+    private final StripeService stripeService;
 
     // ------------------------------------------------------
     // CREATE ORDER DEPUIS PANIER
@@ -214,18 +214,28 @@ public class OrderService {
     }
 
     // ------------------------------------------------------
-    // ANNULER UNE COMMANDE
+    // ANNULER UNE COMMANDE (PENDING ou PAID) + mails si remboursée
     // ------------------------------------------------------
     @Transactional
     public OrderResponse cancelOrder(Long orderId, String userEmail) {
         Order order = getOrderForUserOrThrow(orderId, userEmail);
 
-        if (order.getStatus() != OrderStatus.PENDING) {
+        OrderStatus previousStatus = order.getStatus();
+
+        if (previousStatus != OrderStatus.PENDING
+                && previousStatus != OrderStatus.PAID) {
             throw new IllegalStateException("Cette commande ne peut plus être annulée.");
         }
 
         order.setStatus(OrderStatus.CANCELLED);
         Order saved = orderRepository.save(order);
+
+        // 💸 Si la commande était payée, on considère que c’est une annulation / remboursement
+        if (previousStatus == OrderStatus.PAID) {
+            mailService.sendPaidOrderCancelledToCustomer(saved);
+            mailService.sendPaidOrderCancelledToAdmins(saved);
+        }
+
         return toDto(saved);
     }
 
@@ -240,7 +250,6 @@ public class OrderService {
             throw new IllegalStateException("Seules les commandes livrées peuvent faire l'objet d'un retour.");
         }
 
-        // On stocke le motif dans "notes" pour ne pas modifier le schéma
         StringBuilder notes = new StringBuilder(
                 order.getNotes() != null ? order.getNotes() + "\n\n" : ""
         );
@@ -254,11 +263,69 @@ public class OrderService {
         order.setStatus(OrderStatus.RETURN_REQUESTED);
         Order saved = orderRepository.save(order);
 
-        // 🔥 mail aux admins / super admin
         mailService.sendReturnRequested(saved);
 
         return toDto(saved);
     }
+
+    // ------------------------------------------------------
+    // ADMIN : ACCEPTER UN RETOUR
+    // ------------------------------------------------------
+    @Transactional
+    public OrderResponse approveReturnFromAdmin(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
+
+        if (order.getStatus() != OrderStatus.RETURN_REQUESTED) {
+            throw new IllegalStateException("Seules les commandes avec un retour demandé peuvent être acceptées.");
+        }
+
+        StringBuilder notes = new StringBuilder(
+                order.getNotes() != null ? order.getNotes() + "\n\n" : ""
+        );
+        notes.append("=== RETOUR ACCEPTÉ PAR L'ADMIN ===\n");
+        notes.append("Adresse de retour communiquée au client.\n");
+        order.setNotes(notes.toString());
+
+        order.setStatus(OrderStatus.RETURN_APPROVED);
+        Order saved = orderRepository.save(order);
+
+        mailService.sendReturnApprovedToCustomer(saved);
+
+        return toDto(saved);
+    }
+
+    // ------------------------------------------------------
+// ADMIN : REFUSER UN RETOUR
+// ------------------------------------------------------
+    @Transactional
+    public OrderResponse rejectReturnFromAdmin(Long orderId, String adminReason) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
+
+        if (order.getStatus() != OrderStatus.RETURN_REQUESTED) {
+            throw new IllegalStateException("Seules les commandes avec un retour demandé peuvent être refusées.");
+        }
+
+        if (adminReason == null || adminReason.isBlank()) {
+            throw new IllegalArgumentException("Une raison de refus est obligatoire.");
+        }
+
+        StringBuilder notes = new StringBuilder(
+                order.getNotes() != null ? order.getNotes() + "\n\n" : ""
+        );
+        notes.append("=== RETOUR REFUSÉ PAR L'ADMIN ===\n");
+        notes.append("Raison : ").append(adminReason).append("\n"); // ✅ ici sans ()
+        order.setNotes(notes.toString());
+
+        order.setStatus(OrderStatus.RETURN_REJECTED);
+        Order saved = orderRepository.save(order);
+
+        mailService.sendReturnRejectedToCustomer(saved, adminReason);
+
+        return toDto(saved);
+    }
+
 
     // ------------------------------------------------------
     // 🔥 CRÉER SESSION STRIPE POUR COMMANDE EXISTANTE
@@ -343,6 +410,7 @@ public class OrderService {
                 .totalAmount(order.getTotalAmount())
                 .status(order.getStatus())
                 .createdAt(order.getCreatedAt())
+                .notes(order.getNotes())
                 .items(itemsDto)
                 .build();
     }

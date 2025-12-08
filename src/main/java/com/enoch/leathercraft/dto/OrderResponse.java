@@ -1,8 +1,10 @@
+// src/main/java/com/enoch/leathercraft/dto/OrderResponse.java
 package com.enoch.leathercraft.dto;
 
 import com.enoch.leathercraft.entities.OrderStatus;
 import lombok.Builder;
 import lombok.Data;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -15,5 +17,6 @@ public class OrderResponse {
     private BigDecimal totalAmount;
     private OrderStatus status;
     private Instant createdAt;
-    private List<OrderItemResponse> items; // Ajout de la liste des items
+    private String notes;                 // 🆕 pour afficher motif / décisions
+    private List<OrderItemResponse> items;
 }
