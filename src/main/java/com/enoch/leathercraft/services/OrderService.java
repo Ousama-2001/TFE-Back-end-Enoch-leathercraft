@@ -1,11 +1,6 @@
-// src/main/java/com/enoch/leathercraft/services/OrderService.java
 package com.enoch.leathercraft.services;
 
-import com.enoch.leathercraft.dto.CheckoutRequest;
-import com.enoch.leathercraft.dto.OrderItemResponse;
-import com.enoch.leathercraft.dto.OrderResponse;
-import com.enoch.leathercraft.dto.StripeCheckoutResponse;
-import com.enoch.leathercraft.dto.ReturnRequest;
+import com.enoch.leathercraft.dto.*;
 import com.enoch.leathercraft.entities.*;
 import com.enoch.leathercraft.repository.CartRepository;
 import com.enoch.leathercraft.repository.OrderRepository;
@@ -19,10 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,14 +27,15 @@ public class OrderService {
     private final ProductRepository productRepository;
     private final MailService mailService;
     private final StripeService stripeService;
+    private final InvoicePdfService invoicePdfService;
 
     // ------------------------------------------------------
-    // CREATE ORDER DEPUIS PANIER
+    // CREATE ORDER FROM CART
     // ------------------------------------------------------
     @Transactional
     public OrderResponse createOrderFromCart(String userEmail, CheckoutRequest checkoutRequest) {
         Cart cart = cartRepository.findByUser_EmailAndStatus(userEmail, CartStatus.OPEN)
-                .orElseThrow(() -> new EntityNotFoundException("Aucun panier ouvert trouvé pour cet utilisateur"));
+                .orElseThrow(() -> new EntityNotFoundException("Aucun panier ouvert trouvé"));
 
         if (cart.getItems().isEmpty()) {
             throw new IllegalStateException("Impossible de commander un panier vide");
@@ -51,6 +44,7 @@ public class OrderService {
         Order order = new Order();
         order.setReference("CMD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
         order.setCustomerEmail(userEmail);
+        order.setStatus(OrderStatus.PENDING);
 
         if (checkoutRequest != null) {
             order.setFirstName(checkoutRequest.firstName());
@@ -63,8 +57,6 @@ public class OrderService {
             order.setNotes(checkoutRequest.notes());
         }
 
-        order.setStatus(OrderStatus.PENDING);
-
         BigDecimal totalAmount = BigDecimal.ZERO;
         Set<Product> updatedProducts = new HashSet<>();
 
@@ -72,13 +64,10 @@ public class OrderService {
             Product product = cartItem.getProduct();
             int quantity = cartItem.getQuantity();
 
-            int currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+            int stock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+            if (stock < quantity) throw new IllegalStateException("Stock insuffisant pour " + product.getName());
 
-            if (currentStock < quantity) {
-                throw new IllegalStateException("Stock insuffisant pour le produit : " + product.getName());
-            }
-
-            product.setStockQuantity(currentStock - quantity);
+            product.setStockQuantity(stock - quantity);
             updatedProducts.add(product);
 
             OrderItem orderItem = OrderItem.builder()
@@ -88,9 +77,9 @@ public class OrderService {
                     .quantity(quantity)
                     .build();
 
-            BigDecimal lineTotal = product.getPrice().multiply(BigDecimal.valueOf(quantity));
-            totalAmount = totalAmount.add(lineTotal);
             order.addItem(orderItem);
+
+            totalAmount = totalAmount.add(product.getPrice().multiply(BigDecimal.valueOf(quantity)));
         }
 
         order.setTotalAmount(totalAmount);
@@ -104,43 +93,31 @@ public class OrderService {
     }
 
     // ------------------------------------------------------
-    // CLIENT : GET USER ORDERS
+    // CLIENT : MES COMMANDES
     // ------------------------------------------------------
     @Transactional(readOnly = true)
     public List<OrderResponse> getUserOrders(String userEmail) {
-        return orderRepository
-                .findByCustomerEmailOrderByCreatedAtDesc(userEmail)
-                .stream()
-                .map(this::toDto)
-                .collect(Collectors.toList());
+        return orderRepository.findByCustomerEmailOrderByCreatedAtDesc(userEmail)
+                .stream().map(this::toDto).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public OrderResponse getUserOrderById(Long orderId, String userEmail) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
-
-        if (!order.getCustomerEmail().equalsIgnoreCase(userEmail)) {
-            throw new AccessDeniedException("Cette commande n'appartient pas à cet utilisateur");
-        }
-
-        return toDto(order);
+        return toDto(getOrderForUserOrThrow(orderId, userEmail));
     }
 
     // ------------------------------------------------------
-    // ADMIN : LISTE + DETAIL
+    // ADMIN : LIST ALL + GET
     // ------------------------------------------------------
     @Transactional(readOnly = true)
     public List<OrderResponse> getAllOrders() {
         return orderRepository.findAllByOrderByCreatedAtDesc()
-                .stream()
-                .map(this::toDto)
-                .collect(Collectors.toList());
+                .stream().map(this::toDto).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public OrderResponse getOrderById(Long orderId) {
-        Order order = orderRepository.findById(orderId)
+    public OrderResponse getOrderById(Long id) {
+        Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
         return toDto(order);
     }
@@ -153,17 +130,17 @@ public class OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
 
-        final OrderStatus statusEnum;
+        OrderStatus status;
         try {
-            statusEnum = OrderStatus.valueOf(newStatus);
-        } catch (IllegalArgumentException e) {
+            status = OrderStatus.valueOf(newStatus);
+        } catch (Exception e) {
             throw new IllegalArgumentException("Statut invalide : " + newStatus);
         }
 
-        order.setStatus(statusEnum);
+        order.setStatus(status);
         Order saved = orderRepository.save(order);
 
-        if (statusEnum == OrderStatus.SHIPPED || statusEnum == OrderStatus.DELIVERED) {
+        if (status == OrderStatus.SHIPPED || status == OrderStatus.DELIVERED) {
             mailService.sendOrderStatusUpdated(saved);
         }
 
@@ -171,23 +148,56 @@ public class OrderService {
     }
 
     // ------------------------------------------------------
-    // STRIPE : CONFIRMER PAIEMENT (callback)
+    // ANNULER
     // ------------------------------------------------------
+    @Transactional
+    public OrderResponse cancelOrder(Long orderId, String userEmail) {
+        Order order = getOrderForUserOrThrow(orderId, userEmail);
+
+        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.PAID) {
+            throw new IllegalStateException("Commande non annulable");
+        }
+
+        OrderStatus previous = order.getStatus();
+        order.setStatus(OrderStatus.CANCELLED);
+        Order saved = orderRepository.save(order);
+
+        if (previous == OrderStatus.PAID) {
+            mailService.sendPaidOrderCancelledToCustomer(saved);
+            mailService.sendPaidOrderCancelledToAdmins(saved);
+        }
+
+        return toDto(saved);
+    }
+
+    // ------------------------------------------------------
+    // STRIPE : créer session pour commande existante
+    // ------------------------------------------------------
+    @Transactional
+    public StripeCheckoutResponse createStripeCheckoutForOrder(Long orderId, String userEmail)
+            throws StripeException {
+
+        Order order = getOrderForUserOrThrow(orderId, userEmail);
+
+        if (order.getStatus() != OrderStatus.PENDING) {
+            throw new IllegalStateException("Commande non payable");
+        }
+
+        String checkoutUrl = stripeService.createCheckoutSession(toDto(order));
+        return new StripeCheckoutResponse(checkoutUrl, order.getReference());
+    }
+
     @Transactional
     public OrderResponse markOrderAsPaidFromStripeSession(String sessionId) throws StripeException {
         Session session = Session.retrieve(sessionId);
 
         if (!"paid".equalsIgnoreCase(session.getPaymentStatus())) {
-            throw new IllegalStateException("Paiement non confirmé par Stripe.");
+            throw new IllegalStateException("Paiement non confirmé");
         }
 
-        String orderReference = session.getMetadata().get("orderReference");
-        if (orderReference == null) {
-            throw new IllegalStateException("Référence de commande manquante dans la session Stripe.");
-        }
-
-        Order order = orderRepository.findByReference(orderReference)
-                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable pour la référence : " + orderReference));
+        String ref = session.getMetadata().get("orderReference");
+        Order order = orderRepository.findByReference(ref)
+                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
 
         if (order.getStatus() != OrderStatus.PAID) {
             order.setStatus(OrderStatus.PAID);
@@ -200,76 +210,34 @@ public class OrderService {
     }
 
     // ------------------------------------------------------
-    // HELPER : récupérer commande + contrôle email
-    // ------------------------------------------------------
-    private Order getOrderForUserOrThrow(Long orderId, String userEmail) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
-
-        if (!order.getCustomerEmail().equalsIgnoreCase(userEmail)) {
-            throw new AccessDeniedException("Vous n'avez pas accès à cette commande.");
-        }
-
-        return order;
-    }
-
-    // ------------------------------------------------------
-    // ANNULER UNE COMMANDE (PENDING ou PAID) + mails si remboursée
-    // ------------------------------------------------------
-    @Transactional
-    public OrderResponse cancelOrder(Long orderId, String userEmail) {
-        Order order = getOrderForUserOrThrow(orderId, userEmail);
-
-        OrderStatus previousStatus = order.getStatus();
-
-        if (previousStatus != OrderStatus.PENDING
-                && previousStatus != OrderStatus.PAID) {
-            throw new IllegalStateException("Cette commande ne peut plus être annulée.");
-        }
-
-        order.setStatus(OrderStatus.CANCELLED);
-        Order saved = orderRepository.save(order);
-
-        // 💸 Si la commande était payée, on considère que c’est une annulation / remboursement
-        if (previousStatus == OrderStatus.PAID) {
-            mailService.sendPaidOrderCancelledToCustomer(saved);
-            mailService.sendPaidOrderCancelledToAdmins(saved);
-        }
-
-        return toDto(saved);
-    }
-
-    // ------------------------------------------------------
-    // 🔥 DEMANDER UN RETOUR (commande livrée)
+    // RETOUR : client demande
     // ------------------------------------------------------
     @Transactional
     public OrderResponse requestReturn(Long orderId, String userEmail, ReturnRequest request) {
         Order order = getOrderForUserOrThrow(orderId, userEmail);
 
         if (order.getStatus() != OrderStatus.DELIVERED) {
-            throw new IllegalStateException("Seules les commandes livrées peuvent faire l'objet d'un retour.");
+            throw new IllegalStateException("Retour non autorisé");
         }
 
-        StringBuilder notes = new StringBuilder(
-                order.getNotes() != null ? order.getNotes() + "\n\n" : ""
-        );
-        notes.append("=== DEMANDE DE RETOUR ===\n");
-        notes.append("Motif : ").append(request.reason() != null ? request.reason() : "Non précisé").append("\n");
+        StringBuilder notes = new StringBuilder(Optional.ofNullable(order.getNotes()).orElse(""));
+        notes.append("\n\n=== DEMANDE DE RETOUR ===\n");
+        notes.append("Motif : ").append(request.reason()).append("\n");
         if (request.comment() != null && !request.comment().isBlank()) {
             notes.append("Commentaire : ").append(request.comment()).append("\n");
         }
+
         order.setNotes(notes.toString());
-
         order.setStatus(OrderStatus.RETURN_REQUESTED);
-        Order saved = orderRepository.save(order);
 
+        Order saved = orderRepository.save(order);
         mailService.sendReturnRequested(saved);
 
         return toDto(saved);
     }
 
     // ------------------------------------------------------
-    // ADMIN : ACCEPTER UN RETOUR
+    // RETOUR : admin approve / reject
     // ------------------------------------------------------
     @Transactional
     public OrderResponse approveReturnFromAdmin(Long orderId) {
@@ -277,45 +245,32 @@ public class OrderService {
                 .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
 
         if (order.getStatus() != OrderStatus.RETURN_REQUESTED) {
-            throw new IllegalStateException("Seules les commandes avec un retour demandé peuvent être acceptées.");
+            throw new IllegalStateException("Retour non acceptable");
         }
-
-        StringBuilder notes = new StringBuilder(
-                order.getNotes() != null ? order.getNotes() + "\n\n" : ""
-        );
-        notes.append("=== RETOUR ACCEPTÉ PAR L'ADMIN ===\n");
-        notes.append("Adresse de retour communiquée au client.\n");
-        order.setNotes(notes.toString());
 
         order.setStatus(OrderStatus.RETURN_APPROVED);
         Order saved = orderRepository.save(order);
-
         mailService.sendReturnApprovedToCustomer(saved);
 
         return toDto(saved);
     }
 
-    // ------------------------------------------------------
-// ADMIN : REFUSER UN RETOUR
-// ------------------------------------------------------
     @Transactional
     public OrderResponse rejectReturnFromAdmin(Long orderId, String adminReason) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
 
         if (order.getStatus() != OrderStatus.RETURN_REQUESTED) {
-            throw new IllegalStateException("Seules les commandes avec un retour demandé peuvent être refusées.");
+            throw new IllegalStateException("Retour non refusables");
         }
 
         if (adminReason == null || adminReason.isBlank()) {
             throw new IllegalArgumentException("Une raison de refus est obligatoire.");
         }
 
-        StringBuilder notes = new StringBuilder(
-                order.getNotes() != null ? order.getNotes() + "\n\n" : ""
-        );
-        notes.append("=== RETOUR REFUSÉ PAR L'ADMIN ===\n");
-        notes.append("Raison : ").append(adminReason).append("\n"); // ✅ ici sans ()
+        StringBuilder notes = new StringBuilder(Optional.ofNullable(order.getNotes()).orElse(""));
+        notes.append("\n\n=== RETOUR REFUSÉ PAR L'ADMIN ===\n");
+        notes.append("Raison : ").append(adminReason).append("\n");
         order.setNotes(notes.toString());
 
         order.setStatus(OrderStatus.RETURN_REJECTED);
@@ -326,81 +281,39 @@ public class OrderService {
         return toDto(saved);
     }
 
-
     // ------------------------------------------------------
-    // 🔥 CRÉER SESSION STRIPE POUR COMMANDE EXISTANTE
+    // ✅ FACTURE PDF
     // ------------------------------------------------------
-    @Transactional
-    public StripeCheckoutResponse createStripeCheckoutForOrder(Long orderId, String userEmail)
-            throws StripeException {
-
+    @Transactional(readOnly = true)
+    public byte[] generateInvoicePdf(Long orderId, String userEmail) {
         Order order = getOrderForUserOrThrow(orderId, userEmail);
 
-        if (order.getStatus() != OrderStatus.PENDING) {
-            throw new IllegalStateException("Seules les commandes en attente peuvent être payées.");
+        if (order.getStatus() != OrderStatus.PAID && order.getStatus() != OrderStatus.DELIVERED) {
+            throw new IllegalStateException("Facture indisponible");
         }
 
-        OrderResponse dto = toDto(order);
-        String checkoutUrl = stripeService.createCheckoutSession(dto);
-
-        return new StripeCheckoutResponse(checkoutUrl, order.getReference());
+        return invoicePdfService.generate(order);
     }
 
     // ------------------------------------------------------
-    // FACTURE TXT
+    // HELPERS
     // ------------------------------------------------------
-    public String generateInvoiceContent(Long orderId, String userEmail) {
-        Order order = getOrderForUserOrThrow(orderId, userEmail);
+    private Order getOrderForUserOrThrow(Long orderId, String userEmail) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Commande introuvable"));
 
-        if (order.getStatus() != OrderStatus.PAID
-                && order.getStatus() != OrderStatus.DELIVERED) {
-            throw new IllegalStateException("La facture n'est disponible que pour les commandes payées.");
+        if (!order.getCustomerEmail().equalsIgnoreCase(userEmail)) {
+            throw new AccessDeniedException("Accès refusé");
         }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("FACTURE - Enoch Leathercraft Shop\n");
-        sb.append("=================================\n\n");
-        sb.append("Référence commande : ").append(order.getReference()).append("\n");
-        sb.append("Client : ").append(order.getFirstName())
-                .append(" ").append(order.getLastName()).append("\n");
-        sb.append("Email : ").append(order.getCustomerEmail()).append("\n");
-        sb.append("Date : ").append(order.getCreatedAt()).append("\n\n");
-
-        sb.append("Adresse de livraison :\n");
-        sb.append(order.getStreet()).append("\n");
-        sb.append(order.getPostalCode()).append(" ").append(order.getCity()).append("\n");
-        sb.append(order.getCountry()).append("\n\n");
-
-        sb.append("Détail :\n");
-        for (OrderItem item : order.getItems()) {
-            sb.append(" - ")
-                    .append(item.getProductName())
-                    .append(" x")
-                    .append(item.getQuantity())
-                    .append(" @ ")
-                    .append(item.getUnitPrice())
-                    .append(" EUR\n");
-        }
-
-        sb.append("\nMontant total : ")
-                .append(order.getTotalAmount())
-                .append(" EUR\n");
-
-        sb.append("Statut : ").append(order.getStatus()).append("\n\n");
-        sb.append("Merci pour votre achat !\n");
-
-        return sb.toString();
+        return order;
     }
 
-    // ------------------------------------------------------
-    // DTO MAPPER
-    // ------------------------------------------------------
     private OrderResponse toDto(Order order) {
-        List<OrderItemResponse> itemsDto = order.getItems().stream()
-                .map(item -> OrderItemResponse.builder()
-                        .productName(item.getProductName())
-                        .unitPrice(item.getUnitPrice())
-                        .quantity(item.getQuantity())
+        List<OrderItemResponse> items = order.getItems().stream()
+                .map(i -> OrderItemResponse.builder()
+                        .productName(i.getProductName())
+                        .unitPrice(i.getUnitPrice())
+                        .quantity(i.getQuantity())
                         .build())
                 .collect(Collectors.toList());
 
@@ -411,7 +324,7 @@ public class OrderService {
                 .status(order.getStatus())
                 .createdAt(order.getCreatedAt())
                 .notes(order.getNotes())
-                .items(itemsDto)
+                .items(items)
                 .build();
     }
 }

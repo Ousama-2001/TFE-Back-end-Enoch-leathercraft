@@ -1,4 +1,3 @@
-// src/main/java/com/enoch/leathercraft/config/SecurityConfig.java
 package com.enoch.leathercraft.config;
 
 import com.enoch.leathercraft.auth.service.JwtAuthFilter;
@@ -41,30 +40,47 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
 
-                        // Auth publique
+                        // 1️⃣ Swagger / OpenAPI
+                        .requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll()
+
+                        // 2️⃣ Auth publique
                         .requestMatchers("/api/auth/**").permitAll()
 
-                        // Produits (GET publics)
+                        // 3️⃣ Contact (PUBLIC)
+                        .requestMatchers(HttpMethod.POST, "/api/contact").permitAll()
+
+                        // 4️⃣ Produits (GET public)
                         .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
 
-                        // Avis produits : GET public
+                        // 5️⃣ Avis produits (GET public)
                         .requestMatchers(HttpMethod.GET, "/api/product-reviews/**").permitAll()
-                        // Les autres opérations (POST/PUT/DELETE) -> user connecté
                         .requestMatchers("/api/product-reviews/**").authenticated()
 
-                        // Panier & commandes (user connecté)
+                        // 6️⃣ Panier & commandes
                         .requestMatchers("/api/cart/**").authenticated()
                         .requestMatchers("/api/orders/**").authenticated()
 
-                        // Admin (ADMIN + SUPER_ADMIN)
+                        // 7️⃣ Admin (ADMIN + SUPER_ADMIN)
                         .requestMatchers("/api/admin/**")
                         .hasAnyAuthority("ADMIN", "SUPER_ADMIN")
 
-                        // Super admin uniquement
+                        // ✅ 8️⃣ Super-admin partagés (ADMIN + SUPER_ADMIN)
+                        // IMPORTANT : ces règles doivent être AVANT /api/super-admin/**
+                        .requestMatchers("/api/super-admin/contact-messages/**")
+                        .hasAnyAuthority("ADMIN", "SUPER_ADMIN")
+
+                        .requestMatchers("/api/super-admin/reactivation-requests/**")
+                        .hasAnyAuthority("ADMIN", "SUPER_ADMIN")
+
+                        // 🔒 9️⃣ Tout le reste en SUPER_ADMIN only
                         .requestMatchers("/api/super-admin/**")
                         .hasAuthority("SUPER_ADMIN")
 
-                        // Le reste : authentifié
+                        // 10️⃣ Tout le reste
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

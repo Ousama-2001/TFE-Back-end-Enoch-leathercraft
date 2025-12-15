@@ -27,20 +27,13 @@ public class PaymentController {
 
         String email = authentication.getName();
 
-        // 1) Créer la commande à partir du panier + infos de checkout
         OrderResponse order = orderService.createOrderFromCart(email, request);
-
-        // 2) Créer la session Stripe pour cette commande
         String checkoutUrl = stripeService.createCheckoutSession(order);
 
-        // 3) Retourner l'URL (et la référence) au front
-        StripeCheckoutResponse response =
-                new StripeCheckoutResponse(checkoutUrl, order.getReference());
-
+        StripeCheckoutResponse response = new StripeCheckoutResponse(checkoutUrl, order.getReference());
         return ResponseEntity.ok(response);
     }
 
-    // 🔹 Confirmation après retour de Stripe (avec session_id)
     @PostMapping("/stripe-confirm")
     public ResponseEntity<OrderResponse> confirmStripePayment(
             @RequestParam("session_id") String sessionId

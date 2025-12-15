@@ -1,10 +1,9 @@
-// src/main/java/com/enoch/leathercraft/controller/OrderController.java
 package com.enoch.leathercraft.controller;
 
 import com.enoch.leathercraft.dto.CheckoutRequest;
 import com.enoch.leathercraft.dto.OrderResponse;
-import com.enoch.leathercraft.dto.StripeCheckoutResponse;
 import com.enoch.leathercraft.dto.ReturnRequest;
+import com.enoch.leathercraft.dto.StripeCheckoutResponse;
 import com.enoch.leathercraft.services.OrderService;
 import com.stripe.exception.StripeException;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +14,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -55,27 +53,18 @@ public class OrderController {
             @PathVariable Long id
     ) {
         String email = authentication.getName();
-        OrderResponse updated = orderService.cancelOrder(id, email);
-        return ResponseEntity.ok(updated);
+        return ResponseEntity.ok(orderService.cancelOrder(id, email));
     }
 
-    /**
-     * Payer une commande en attente : crée une session Stripe
-     * et renvoie l'URL de checkout.
-     */
     @PostMapping("/{id}/pay")
     public ResponseEntity<StripeCheckoutResponse> payOrder(
             Authentication authentication,
             @PathVariable Long id
     ) throws StripeException {
         String email = authentication.getName();
-        StripeCheckoutResponse resp = orderService.createStripeCheckoutForOrder(id, email);
-        return ResponseEntity.ok(resp);
+        return ResponseEntity.ok(orderService.createStripeCheckoutForOrder(id, email));
     }
 
-    /**
-     * 🔥 Demande de retour sur une commande livrée
-     */
     @PostMapping("/{id}/return")
     public ResponseEntity<OrderResponse> requestReturn(
             Authentication authentication,
@@ -83,29 +72,26 @@ public class OrderController {
             @RequestBody ReturnRequest request
     ) {
         String email = authentication.getName();
-        OrderResponse updated = orderService.requestReturn(id, email, request);
-        return ResponseEntity.ok(updated);
+        return ResponseEntity.ok(orderService.requestReturn(id, email, request));
     }
 
+    // ✅ FACTURE PDF
     @GetMapping("/{id}/invoice")
     public ResponseEntity<byte[]> downloadInvoice(
             Authentication authentication,
             @PathVariable Long id
     ) {
         String email = authentication.getName();
-        String invoiceText = orderService.generateInvoiceContent(id, email);
-
-        byte[] bytes = invoiceText.getBytes(StandardCharsets.UTF_8);
-        String filename = "invoice-" + id + ".txt";
+        byte[] pdf = orderService.generateInvoicePdf(id, email);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.TEXT_PLAIN);
+        headers.setContentType(MediaType.APPLICATION_PDF);
         headers.setContentDisposition(
-                ContentDisposition.attachment().filename(filename).build()
+                ContentDisposition.attachment()
+                        .filename("invoice-" + id + ".pdf")
+                        .build()
         );
 
-        return ResponseEntity.ok()
-                .headers(headers)
-                .body(bytes);
+        return ResponseEntity.ok().headers(headers).body(pdf);
     }
 }

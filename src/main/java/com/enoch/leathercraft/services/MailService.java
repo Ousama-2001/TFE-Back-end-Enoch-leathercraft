@@ -378,6 +378,61 @@ public class MailService {
                     order.getReference(), e.getMessage());
         }
     }
+    // Contact le support
+    public void sendContactEmail(
+            String name,
+            String email,
+            String message
+    ) {
+        if (!mailEnabled) {
+            log.warn("📧 Envoi email contact désactivé");
+            return;
+        }
+
+        try {
+            // ===== MAIL ADMIN =====
+            SimpleMailMessage adminMsg = new SimpleMailMessage();
+            adminMsg.setTo(superAdminEmail);
+            adminMsg.setFrom(from);
+            adminMsg.setSubject("📩 Nouveau message de contact");
+
+            adminMsg.setText("""
+                Nouveau message reçu via le formulaire de contact.
+
+                Nom    : %s
+                Email  : %s
+
+                Message :
+                %s
+
+                — Enoch Leathercraft
+                """.formatted(name, email, message));
+
+            mailSender.send(adminMsg);
+
+            // ===== ACCUSÉ CLIENT =====
+            SimpleMailMessage userMsg = new SimpleMailMessage();
+            userMsg.setTo(email);
+            userMsg.setFrom(from);
+            userMsg.setSubject("Nous avons bien reçu votre message");
+
+            userMsg.setText("""
+                Bonjour %s,
+
+                Merci pour votre message.
+                Nous vous répondrons dans les plus brefs délais.
+
+                — Enoch Leathercraft
+                """.formatted(name));
+
+            mailSender.send(userMsg);
+
+            log.info("📧 Emails contact envoyés (admin + client)");
+
+        } catch (Exception e) {
+            log.error("❌ Erreur envoi email contact : {}", e.getMessage());
+        }
+    }
 
     // ==================== UTILS =======================
     private String safe(String v) {
