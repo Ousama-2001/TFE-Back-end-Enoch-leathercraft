@@ -3,6 +3,7 @@ package com.enoch.leathercraft.dto;
 import lombok.Builder;
 import lombok.Data;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -12,4 +13,5 @@ public class CartResponse {
     private List<CartItemResponse> items;
     private Integer totalQuantity;
     private BigDecimal totalAmount;
+    private Instant expiresAt; // ✅ ajout
 }

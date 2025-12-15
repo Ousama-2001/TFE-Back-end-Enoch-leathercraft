@@ -5,61 +5,64 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Service
 public class FileStorageService {
 
-    // Utilisation de la variable d'environnement Spring pour le répertoire de base
-    private final Path fileStorageLocation;
+    private final Path storageDir;
 
-    // Initialisation du répertoire de stockage au démarrage du service
-    public FileStorageService(@Value("${file.upload-dir:./uploads/products}") String uploadDir) {
-        this.fileStorageLocation = Paths.get(uploadDir).toAbsolutePath().normalize();
+    public FileStorageService(
+            @Value("${file.upload-dir:./uploads/products}") String uploadDir
+    ) {
+        this.storageDir = Paths.get(uploadDir).toAbsolutePath().normalize();
         try {
-            Files.createDirectories(this.fileStorageLocation); // Ceci devrait créer le dossier
-            // LOG IMPORTANT : AJOUTEZ UN LOG POUR VOIR LE CHEMIN ABSOLU
-            System.out.println("Chemin de stockage des fichiers: " + this.fileStorageLocation.toString());
-        } catch (Exception ex) {
-            // Erreur fatale si le répertoire ne peut être créé (permission, etc.)
-            throw new RuntimeException("Impossible de créer le répertoire de stockage des fichiers. Vérifiez les permissions: " + this.fileStorageLocation, ex);
+            Files.createDirectories(this.storageDir);
+        } catch (Exception e) {
+            throw new RuntimeException("Impossible de créer le dossier uploads", e);
         }
     }
 
-    /**
-     * Stocke le fichier sur le système de fichiers avec un nom unique et retourne l'URL publique.
-     * @param file Le fichier à stocker.
-     * @return Le chemin public (ex: /uploads/products/UUID.jpg)
-     */
     public String storeFile(MultipartFile file) {
-        String originalFileName = StringUtils.cleanPath(file.getOriginalFilename());
-
-        // Génération d'un nom de fichier unique (UUID) pour éviter les collisions et les problèmes de sécurité.
-        String fileExtension = "";
-        if (originalFileName.contains(".")) {
-            fileExtension = originalFileName.substring(originalFileName.lastIndexOf("."));
-        }
-        String uniqueFileName = UUID.randomUUID().toString() + fileExtension;
+        String ext = StringUtils.getFilenameExtension(file.getOriginalFilename());
+        String filename = UUID.randomUUID() + (ext != null ? "." + ext : "");
 
         try {
-            if (uniqueFileName.contains("..")) {
-                throw new IOException("Le nom du fichier contient une séquence de chemin non valide.");
-            }
+            Path target = storageDir.resolve(filename);
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            return "/uploads/products/" + filename;
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur upload fichier", e);
+        }
+    }
 
-            // Copie du fichier dans le répertoire de destination
-            Path targetLocation = this.fileStorageLocation.resolve(uniqueFileName);
-            Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+    public List<String> storeFiles(List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) return List.of();
+        List<String> urls = new ArrayList<>();
+        for (MultipartFile f : files) {
+            if (f == null || f.isEmpty()) continue;
+            urls.add(storeFile(f));
+        }
+        return urls;
+    }
 
-            // Retourne l'URL publique que le frontend utilisera pour l'afficher
-            return "/uploads/products/" + uniqueFileName;
+    // ✅ suppression physique du fichier (si url = /uploads/products/xxx.jpg)
+    public void deleteByUrl(String url) {
+        if (url == null || url.isBlank()) return;
 
-        } catch (IOException ex) {
-            throw new RuntimeException("Impossible de stocker le fichier " + originalFileName, ex);
+        try {
+            String filename = Paths.get(url).getFileName().toString(); // xxx.jpg
+            Path target = storageDir.resolve(filename).normalize();
+
+            // sécurité: empêche de sortir du dossier
+            if (!target.startsWith(storageDir)) return;
+
+            Files.deleteIfExists(target);
+        } catch (Exception ignored) {
+            // on ignore pour ne pas casser la suppression DB
         }
     }
 }

@@ -19,8 +19,8 @@ public class CatalogService {
     private final ProductRepository productRepository;
 
     /**
-     * Retourne tous les produits actifs (non supprimés) associés
-     * à la catégorie dont le slug = paramètre.
+     * Retourne tous les produits actifs (non supprimés)
+     * associés à la catégorie dont le slug = paramètre.
      */
     @Transactional(readOnly = true)
     public List<ProductResponse> getProductsByCategorySlug(String slug) {
@@ -33,21 +33,27 @@ public class CatalogService {
     // ====== Mapping Product -> ProductResponse ======
     private ProductResponse toDto(Product p) {
 
-        // Images (on trie : primary d’abord, puis position)
+        // Images : primary d’abord, puis position
         List<String> imageUrls;
+
         if (p.getImages() != null && !p.getImages().isEmpty()) {
             imageUrls = p.getImages().stream()
                     .sorted((a, b) -> {
-                        boolean ap = Boolean.TRUE.equals(a.getIsPrimary());
-                        boolean bp = Boolean.TRUE.equals(b.getIsPrimary());
-                        int cmpPrimary = Boolean.compare(bp, ap); // primary d'abord
+                        boolean ap = Boolean.TRUE.equals(a.getPrimary());
+                        boolean bp = Boolean.TRUE.equals(b.getPrimary());
+
+                        // primary d'abord
+                        int cmpPrimary = Boolean.compare(bp, ap);
                         if (cmpPrimary != 0) return cmpPrimary;
 
+                        // puis position
                         Integer pa = a.getPosition();
                         Integer pb = b.getPosition();
+
                         if (pa == null && pb == null) return 0;
                         if (pa == null) return 1;
                         if (pb == null) return -1;
+
                         return Integer.compare(pa, pb);
                     })
                     .map(ProductImage::getUrl)
@@ -62,7 +68,6 @@ public class CatalogService {
                 .name(p.getName())
                 .slug(p.getSlug())
                 .description(p.getDescription())
-                .material(p.getMaterial())
                 .price(p.getPrice())
                 .currency(p.getCurrency())
                 .weightGrams(p.getWeightGrams())

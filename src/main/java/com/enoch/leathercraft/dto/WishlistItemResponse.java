@@ -32,7 +32,6 @@ public record WishlistItemResponse(
                 .name(p.getName())
                 .slug(p.getSlug())
                 .description(p.getDescription())
-                .material(p.getMaterial())
                 .price(p.getPrice())
                 .currency(p.getCurrency())
                 .weightGrams(p.getWeightGrams())

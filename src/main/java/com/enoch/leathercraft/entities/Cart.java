@@ -35,4 +35,7 @@ public class Cart {
 
     @Column(nullable = false)
     private Instant updatedAt = Instant.now();
+    
+    @Column(name = "expires_at")
+    private Instant expiresAt;
 }

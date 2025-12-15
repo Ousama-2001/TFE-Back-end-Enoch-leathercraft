@@ -2,6 +2,7 @@
 package com.enoch.leathercraft.controller;
 
 import com.enoch.leathercraft.dto.ProductCreateRequest;
+import com.enoch.leathercraft.dto.ProductImageResponse;
 import com.enoch.leathercraft.dto.ProductResponse;
 import com.enoch.leathercraft.services.FileStorageService;
 import com.enoch.leathercraft.services.ProductService;
@@ -23,38 +24,60 @@ public class AdminProductController {
     private final FileStorageService fileStorageService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // CREATE
+    // =========================
+    // ✅ CREATE : multi images
+    // FRONT: FormData -> product (JSON) + files (many)
+    // =========================
     @PostMapping(consumes = {"multipart/form-data"})
-    public ResponseEntity<ProductResponse> createProductWithImage(
+    public ResponseEntity<ProductResponse> createProduct(
             @RequestPart("product") String productJson,
-            @RequestPart("file") MultipartFile file) {
+            @RequestPart(value = "files", required = false) List<MultipartFile> files,
+            @RequestPart(value = "file", required = false) MultipartFile legacyFile
+    ) {
         try {
-            ProductCreateRequest request = objectMapper.readValue(productJson, ProductCreateRequest.class);
-            String imageUrl = fileStorageService.storeFile(file);
-            ProductResponse response = productService.create(request, imageUrl);
+            ProductCreateRequest req = objectMapper.readValue(productJson, ProductCreateRequest.class);
+
+            // compat ancien front: "file"
+            if ((files == null || files.isEmpty()) && legacyFile != null && !legacyFile.isEmpty()) {
+                files = List.of(legacyFile);
+            }
+
+            List<String> urls = (files != null && !files.isEmpty())
+                    ? fileStorageService.storeFiles(files)
+                    : List.of();
+
+            ProductResponse response = productService.create(req, urls);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    // UPDATE (image optionnelle)
+    // =========================
+    // ✅ UPDATE : ajoute des images (optionnel)
+    // FRONT: product (JSON) + files (optionnel)
+    // =========================
     @PutMapping(value = "/{id}", consumes = {"multipart/form-data"})
-    public ResponseEntity<ProductResponse> updateProductWithImage(
+    public ResponseEntity<ProductResponse> updateProduct(
             @PathVariable Long id,
             @RequestPart("product") String productJson,
-            @RequestPart(value = "file", required = false) MultipartFile file) {
-
+            @RequestPart(value = "files", required = false) List<MultipartFile> files,
+            @RequestPart(value = "file", required = false) MultipartFile legacyFile
+    ) {
         try {
-            ProductCreateRequest request = objectMapper.readValue(productJson, ProductCreateRequest.class);
+            ProductCreateRequest req = objectMapper.readValue(productJson, ProductCreateRequest.class);
 
-            String imageUrl = null;
-            if (file != null && !file.isEmpty()) {
-                imageUrl = fileStorageService.storeFile(file);
+            if ((files == null || files.isEmpty()) && legacyFile != null && !legacyFile.isEmpty()) {
+                files = List.of(legacyFile);
             }
 
-            ProductResponse response = productService.update(id, request, imageUrl);
+            List<String> urls = (files != null && !files.isEmpty())
+                    ? fileStorageService.storeFiles(files)
+                    : List.of();
+
+            ProductResponse response = productService.update(id, req, urls);
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
@@ -70,19 +93,19 @@ public class AdminProductController {
         return ResponseEntity.noContent().build();
     }
 
-    // ✅ Produits archivés (soft deleted)
+    // ✅ Produits archivés
     @GetMapping("/archived")
     public List<ProductResponse> getArchived() {
         return productService.getArchived();
     }
 
-    // ✅ Restaurer un produit archivé
+    // ✅ Restaurer
     @PatchMapping("/{id}/restore")
     public ProductResponse restore(@PathVariable Long id) {
         return productService.restore(id);
     }
 
-    // --- Mise à jour du stock ---
+    // ✅ Stock
     @PutMapping("/{id}/stock")
     public ProductResponse updateStock(
             @PathVariable Long id,
@@ -92,9 +115,62 @@ public class AdminProductController {
     }
 
     @GetMapping("/low-stock")
-    public List<ProductResponse> lowStock(
-            @RequestParam(defaultValue = "5") int threshold
-    ) {
+    public List<ProductResponse> lowStock(@RequestParam(defaultValue = "5") int threshold) {
         return productService.findLowStock(threshold);
     }
+
+    // ======================================================
+    // 🔥 ENDPOINTS CRUD IMAGES
+    // ======================================================
+
+    // ✅ ajouter des images à un produit existant
+    // POST /api/admin/products/{id}/images  (multipart) files[]
+    @PostMapping(value = "/{id}/images", consumes = {"multipart/form-data"})
+    public ResponseEntity<List<ProductImageResponse>> addImages(
+            @PathVariable Long id,
+            @RequestPart("files") List<MultipartFile> files
+    ) {
+        try {
+            List<String> urls = fileStorageService.storeFiles(files);
+            return ResponseEntity.ok(productService.addImages(id, urls));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    // ✅ supprimer une image
+    @DeleteMapping("/{productId}/images/{imageId}")
+    public ResponseEntity<Void> deleteImage(
+            @PathVariable Long productId,
+            @PathVariable Long imageId
+    ) {
+        productService.deleteImage(productId, imageId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ✅ définir l'image principale
+    @PutMapping("/{productId}/images/{imageId}/primary")
+    public ResponseEntity<List<ProductImageResponse>> setPrimary(
+            @PathVariable Long productId,
+            @PathVariable Long imageId
+    ) {
+        return ResponseEntity.ok(productService.setPrimaryImage(productId, imageId));
+    }
+
+    // ✅ réordonner les images
+    // body JSON: [1,5,3,2]
+    @PutMapping("/{productId}/images/reorder")
+    public ResponseEntity<List<ProductImageResponse>> reorder(
+            @PathVariable Long productId,
+            @RequestBody List<Long> orderedImageIds
+    ) {
+        return ResponseEntity.ok(productService.reorderImages(productId, orderedImageIds));
+    }
+    // ✅ récupérer les images d’un produit (avec ids/primary/position)
+    @GetMapping("/{id}/images")
+    public List<ProductImageResponse> getImages(@PathVariable Long id) {
+        return productService.getImages(id);
+    }
+
 }

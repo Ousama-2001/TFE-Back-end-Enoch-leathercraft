@@ -12,13 +12,10 @@ import java.util.Set;
 
 @Entity
 @Table(name = "products")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor
 @Builder
-// ⬇️ IMPORTANT : on dit à Jackson d'ignorer les champs internes d'Hibernate
-@JsonIgnoreProperties(value = {"hibernateLazyInitializer", "handler"}, ignoreUnknown = true)
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Product {
 
     @Id
@@ -34,43 +31,36 @@ public class Product {
     @Column(unique = true, length = 180)
     private String slug;
 
-    @Column(name = "description", columnDefinition = "TEXT")
+    @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(length = 120)
     private String material;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price;
 
     @Column(nullable = false, length = 3)
-    private String currency; // ex: "EUR"
+    private String currency;
 
-    @Column(name = "weight_grams")
     private Integer weightGrams;
 
-    @Column(name = "is_active")
+    @Builder.Default
     private Boolean isActive = true;
 
-    // ✅ Soft delete
-    @Column(name = "deleted", nullable = false)
+    @Builder.Default
     private boolean deleted = false;
 
-    @Column(name = "created_at")
     private Instant createdAt;
-
-    @Column(name = "updated_at")
     private Instant updatedAt;
 
-    @Column(nullable = false)
+    @Builder.Default
     private Integer stockQuantity = 0;
 
-    // --- RELATION IMAGES ---
+    // 🔥 IMAGES
     @OneToMany(
             mappedBy = "product",
             cascade = CascadeType.ALL,
-            orphanRemoval = true,
-            fetch = FetchType.LAZY
+            orphanRemoval = true
     )
     @Builder.Default
     private Set<ProductImage> images = new HashSet<>();
@@ -82,9 +72,8 @@ public class Product {
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
-        createdAt = now;
-        updatedAt = now;
+        createdAt = Instant.now();
+        updatedAt = createdAt;
     }
 
     @PreUpdate

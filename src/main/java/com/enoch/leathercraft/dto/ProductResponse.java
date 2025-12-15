@@ -6,30 +6,32 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.util.List;
 
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor
 @Builder
 public class ProductResponse {
+
     private Long id;
     private String sku;
     private String name;
     private String slug;
     private String description;
-    private String material;
     private BigDecimal price;
     private String currency;
     private Integer weightGrams;
     private Boolean isActive;
+
+    // ✅ compat front actuel
     private List<String> imageUrls;
+
+    // 🔥 CRUD images admin
+    private List<ProductImageResponse> images;
+
     private Integer stockQuantity;
 
-    // 🔥 Pour pré-remplir le formulaire admin
     private Long segmentCategoryId;
     private Long typeCategoryId;
 
-    // 🔥 Très utile pour le front catalogue
-    private String segmentSlug;  // ex: "homme"
-    private String typeSlug;     // ex: "sacs-sacoches"
+    private String segmentSlug;
+    private String typeSlug;
 }
