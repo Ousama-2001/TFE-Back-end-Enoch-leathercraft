@@ -42,25 +42,35 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         String token = authHeader.substring(7);
-        log.info("[JWT-FILTER] Token reçu (tronqué) = {}", token.length() > 30 ? token.substring(0, 30) + "..." : token);
+        log.info("[JWT-FILTER] Token reçu (tronqué) = {}",
+                token.length() > 30 ? token.substring(0, 30) + "..." : token
+        );
 
         try {
-            String email = jwtService.extractSubject(token);   // sub = email
-            String role  = jwtService.extractRole(token);      // "CUSTOMER" ou "ADMIN"
+            String email = jwtService.extractSubject(token); // sub = email
+            String role  = jwtService.extractRole(token);    // ex: "CUSTOMER" / "ADMIN" / "SUPER_ADMIN"
+
             log.info("[JWT-FILTER] Token décodé -> email={}, role={}", email, role);
 
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                var authorities = List.of(new SimpleGrantedAuthority(role));
+
+                // ✅ IMPORTANT: hasRole("ADMIN") attend une authority "ROLE_ADMIN"
+                String springRole = (role != null && role.startsWith("ROLE_"))
+                        ? role
+                        : "ROLE_" + role;
+
+                var authorities = List.of(new SimpleGrantedAuthority(springRole));
 
                 var authToken = new UsernamePasswordAuthenticationToken(
                         email,
                         null,
                         authorities
                 );
+
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authToken);
 
-                log.info("[JWT-FILTER] Authentication placée dans le SecurityContext : {}", authToken);
+                log.info("[JWT-FILTER] Authentication OK : {}", authToken);
             }
 
         } catch (Exception e) {

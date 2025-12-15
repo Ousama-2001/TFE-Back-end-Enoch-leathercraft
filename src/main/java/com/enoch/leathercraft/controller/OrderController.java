@@ -94,4 +94,24 @@ public class OrderController {
 
         return ResponseEntity.ok().headers(headers).body(pdf);
     }
+
+    // ✅ BON DE RETOUR PDF
+    @GetMapping("/{id}/return-label")
+    public ResponseEntity<byte[]> downloadReturnLabel(
+            Authentication authentication,
+            @PathVariable Long id
+    ) {
+        String email = authentication.getName();
+        byte[] pdf = orderService.generateReturnLabelPdf(id, email);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(
+                ContentDisposition.attachment()
+                        .filename("return-label-" + id + ".pdf")
+                        .build()
+        );
+
+        return ResponseEntity.ok().headers(headers).body(pdf);
+    }
 }

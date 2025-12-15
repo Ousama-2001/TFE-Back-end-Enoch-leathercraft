@@ -27,7 +27,10 @@ public class OrderService {
     private final ProductRepository productRepository;
     private final MailService mailService;
     private final StripeService stripeService;
+
+    // ✅ PDFs
     private final InvoicePdfService invoicePdfService;
+    private final ReturnLabelPdfService returnLabelPdfService;
 
     // ------------------------------------------------------
     // CREATE ORDER FROM CART
@@ -78,7 +81,6 @@ public class OrderService {
                     .build();
 
             order.addItem(orderItem);
-
             totalAmount = totalAmount.add(product.getPrice().multiply(BigDecimal.valueOf(quantity)));
         }
 
@@ -86,7 +88,6 @@ public class OrderService {
 
         Order savedOrder = orderRepository.save(order);
         productRepository.saveAll(updatedProducts);
-
         cartService.clearCart(userEmail);
 
         return toDto(savedOrder);
@@ -293,6 +294,20 @@ public class OrderService {
         }
 
         return invoicePdfService.generate(order);
+    }
+
+    // ------------------------------------------------------
+    // ✅ BON DE RETOUR PDF (uniquement si RETURN_APPROVED)
+    // ------------------------------------------------------
+    @Transactional(readOnly = true)
+    public byte[] generateReturnLabelPdf(Long orderId, String userEmail) {
+        Order order = getOrderForUserOrThrow(orderId, userEmail);
+
+        if (order.getStatus() != OrderStatus.RETURN_APPROVED) {
+            throw new IllegalStateException("Le bon de retour est disponible uniquement si le retour est approuvé.");
+        }
+
+        return returnLabelPdfService.generate(order);
     }
 
     // ------------------------------------------------------
