@@ -336,10 +336,19 @@ public class OrderService {
                 .id(order.getId())
                 .reference(order.getReference())
                 .totalAmount(order.getTotalAmount())
+                .subtotalAmount(order.getSubtotalAmount()) // Assure-toi de mapper ça aussi
+                .discountAmount(order.getDiscountAmount()) // Et ça
                 .status(order.getStatus())
                 .createdAt(order.getCreatedAt())
                 .notes(order.getNotes())
+                .couponCode(order.getCouponCode())
+                .couponPercent(order.getCouponPercent())
                 .items(items)
+
+                // ✅ AJOUTE LE MAPPING ICI
+                .customerEmail(order.getCustomerEmail())
+                .userId(order.getCustomer() != null ? order.getCustomer().getId() : null)
+
                 .build();
     }
 }

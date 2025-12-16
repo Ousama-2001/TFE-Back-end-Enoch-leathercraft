@@ -14,12 +14,10 @@ public class OrderResponse {
     private Long id;
     private String reference;
 
-    // ✅ montants
-    private BigDecimal subtotalAmount;   // total items avant remise
-    private BigDecimal discountAmount;   // remise
-    private BigDecimal totalAmount;      // total final (doit matcher Stripe)
+    private BigDecimal subtotalAmount;
+    private BigDecimal discountAmount;
+    private BigDecimal totalAmount;
 
-    // ✅ coupon (si utilisé)
     private String couponCode;
     private Integer couponPercent;
 
@@ -28,4 +26,8 @@ public class OrderResponse {
 
     private String notes;
     private List<OrderItemResponse> items;
+
+    // ✅ AJOUTE CES DEUX CHAMPS
+    private String customerEmail;
+    private Long userId;
 }
