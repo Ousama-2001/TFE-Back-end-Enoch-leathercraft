@@ -1,4 +1,3 @@
-// src/main/java/com/enoch/leathercraft/services/MailService.java
 package com.enoch.leathercraft.services;
 
 import com.enoch.leathercraft.auth.domain.Role;
@@ -16,6 +15,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -61,7 +61,7 @@ public class MailService {
         }
     }
 
-    // ==================== ✅ WELCOME EMAIL (NEW) =======================
+    // ==================== ✅ WELCOME EMAIL =======================
     public void sendWelcomeEmail(String to, String firstName) {
         String displayName = (firstName != null && !firstName.isBlank()) ? firstName.trim() : "👋";
 
@@ -222,7 +222,7 @@ public class MailService {
         return sb.toString();
     }
 
-    // =============== DEMANDE RÉACTIVATION COMPTE ===============
+    // =============== ✅ DEMANDE RÉACTIVATION COMPTE (NOM + PSEUDO) ===============
     public void sendReactivationRequestEmailToAdmin(String userEmail, String message) {
         if (!mailEnabled) {
             log.warn("📧 Envoi email réactivation désactivé");
@@ -238,28 +238,53 @@ public class MailService {
             return;
         }
 
+        // 1. Récupération des infos utilisateur (Nom + Pseudo)
+        String infosUtilisateur = "Inconnu (Email non trouvé en base)";
+        Optional<User> userOpt = userRepository.findByEmail(userEmail);
+
+        if (userOpt.isPresent()) {
+            User u = userOpt.get();
+            // Utilisation des getters corrects (getFirstName, getLastName)
+            String fullName = (safe(u.getFirstName()) + " " + safe(u.getLastName())).trim();
+            String username = safe(u.getUsername());
+
+            if (fullName.isBlank()) fullName = "Sans nom renseigné";
+
+            infosUtilisateur = fullName + " (Pseudo: " + username + ")";
+        }
+
         try {
             SimpleMailMessage msg = new SimpleMailMessage();
             msg.setTo(adminTo);
             msg.setFrom(from);
             msg.setSubject("🔔 [Enoch] Demande de réactivation de compte");
 
-            String body =
-                    "Bonjour,\n\n" +
-                            "Vous avez reçu une NOUVELLE demande de support.\n\n" +
-                            "Type de demande : RÉACTIVATION DE COMPTE\n" +
-                            "Provenance    : Formulaire de réactivation (page de connexion)\n\n" +
-                            "Email utilisateur : " + userEmail + "\n\n" +
-                            "Message :\n" +
-                            (message == null || message.isBlank()
-                                    ? "Aucun message fourni."
-                                    : message) +
-                            "\n\n" +
-                            "Connectez-vous au panneau super administrateur pour gérer cette demande.\n\n" +
-                            "Enoch Leathercraft Shop";
+            String body = """
+                    Bonjour,
+
+                    Vous avez reçu une NOUVELLE demande de support.
+
+                    Type de demande : RÉACTIVATION DE COMPTE
+                    Provenance      : Formulaire de réactivation
+
+                    👤 Utilisateur : %s
+                    📧 Email       : %s
+
+                    Message :
+                    %s
+
+                    Connectez-vous au panneau super administrateur pour gérer cette demande.
+
+                    Enoch Leathercraft Shop
+                    """.formatted(
+                    infosUtilisateur,
+                    userEmail,
+                    (message == null || message.isBlank() ? "Aucun message fourni." : message)
+            );
 
             msg.setText(body);
             mailSender.send(msg);
+            log.info("📧 Email de demande de réactivation envoyé à l'admin pour {}", userEmail);
 
         } catch (Exception e) {
             log.error("❌ Erreur envoi email super admin : {}", e.getMessage());

@@ -18,7 +18,6 @@ public class Cart {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // un user peut avoir plusieurs paniers (ancien / commandes)
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id")
     private User user;
@@ -35,7 +34,13 @@ public class Cart {
 
     @Column(nullable = false)
     private Instant updatedAt = Instant.now();
-    
+
     @Column(name = "expires_at")
     private Instant expiresAt;
+
+    // ✅ NOUVEAUX CHAMPS POUR PERSISTER LE COUPON
+    @Column(length = 50)
+    private String couponCode;
+
+    private Integer couponPercent;
 }

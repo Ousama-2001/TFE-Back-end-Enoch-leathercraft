@@ -6,11 +6,10 @@ import com.enoch.leathercraft.dto.CartAddRequest;
 import com.enoch.leathercraft.dto.CartItemResponse;
 import com.enoch.leathercraft.dto.CartResponse;
 import com.enoch.leathercraft.dto.CartUpdateRequest;
-import com.enoch.leathercraft.entities.Cart;
-import com.enoch.leathercraft.entities.CartItem;
-import com.enoch.leathercraft.entities.CartStatus;
-import com.enoch.leathercraft.entities.Product;
+import com.enoch.leathercraft.dto.CouponValidateResponse;
+import com.enoch.leathercraft.entities.*;
 import com.enoch.leathercraft.repository.CartRepository;
+import com.enoch.leathercraft.repository.CouponRepository;
 import com.enoch.leathercraft.repository.ProductRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -32,11 +31,12 @@ public class CartService {
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
+    private final CouponRepository couponRepository; // ✅ Nécessaire pour valider/sauvegarder
 
-    private static final Duration CART_TTL = Duration.ofMinutes(15);
+    private static final Duration CART_TTL = Duration.ofMinutes(30);
 
     // =========================
-    // ✅ PROMO helpers (prix effectif)
+    // ✅ PROMO helpers
     // =========================
     private boolean isOnSale(Product p, Instant now) {
         if (p.getPromoPrice() == null) return false;
@@ -58,10 +58,13 @@ public class CartService {
     public CartResponse getCurrentCart() {
         User user = getAuthenticatedUser();
         Cart cart = getOrCreateCart(user);
-
         clearIfExpired(cart);
 
-        cart = getOrCreateCart(user);
+        // Nettoyage si vide
+        if(cart.getItems().isEmpty() && cart.getCouponCode() != null) {
+            clearCoupon(cart);
+        }
+
         return toDto(cart);
     }
 
@@ -69,46 +72,33 @@ public class CartService {
     public CartResponse addItem(CartAddRequest req) {
         User user = getAuthenticatedUser();
         Cart cart = getOrCreateCart(user);
-
         clearIfExpired(cart);
 
         Product product = productRepository.findById(req.getProductId())
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
 
         int stock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
-        if (stock <= 0) {
-            throw new IllegalStateException("Produit en rupture de stock");
-        }
+        if (stock <= 0) throw new IllegalStateException("Produit en rupture de stock");
 
         Optional<CartItem> existingItem = cart.getItems().stream()
                 .filter(item -> item.getProduct().getId().equals(product.getId()))
                 .findFirst();
 
         int qtyToAdd = (req.getQuantity() == null || req.getQuantity() < 1) ? 1 : req.getQuantity();
-
         BigDecimal unit = effectivePrice(product);
 
         if (existingItem.isPresent()) {
             CartItem item = existingItem.get();
             int newQuantity = item.getQuantity() + qtyToAdd;
-
-            // ✅ BLOQUER STOCK
-            if (newQuantity > stock) {
-                throw new IllegalStateException("Stock insuffisant (max " + stock + ")");
-            }
+            if (newQuantity > stock) throw new IllegalStateException("Stock insuffisant (max " + stock + ")");
 
             item.setQuantity(newQuantity);
             item.setUnitPrice(unit);
             item.setLineTotal(unit.multiply(BigDecimal.valueOf(newQuantity)));
-
         } else {
-            // ✅ BLOQUER STOCK
-            if (qtyToAdd > stock) {
-                throw new IllegalStateException("Stock insuffisant (max " + stock + ")");
-            }
+            if (qtyToAdd > stock) throw new IllegalStateException("Stock insuffisant (max " + stock + ")");
 
             BigDecimal total = unit.multiply(BigDecimal.valueOf(qtyToAdd));
-
             CartItem newItem = CartItem.builder()
                     .cart(cart)
                     .product(product)
@@ -116,21 +106,17 @@ public class CartService {
                     .unitPrice(unit)
                     .lineTotal(total)
                     .build();
-
             cart.getItems().add(newItem);
         }
 
         refreshExpiry(cart);
-        cartRepository.save(cart);
-
-        return toDto(cart);
+        return toDto(cartRepository.save(cart));
     }
 
     @Transactional
     public CartResponse updateItem(Long productId, CartUpdateRequest req) {
         User user = getAuthenticatedUser();
         Cart cart = getOrCreateCart(user);
-
         clearIfExpired(cart);
 
         CartItem item = cart.getItems().stream()
@@ -140,59 +126,47 @@ public class CartService {
 
         int newQty = (req.getQuantity() == null) ? item.getQuantity() : req.getQuantity();
 
-        // 0 ou moins => suppression
         if (newQty <= 0) {
             cart.getItems().remove(item);
+        } else {
+            Product product = item.getProduct();
+            int stock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+            if (newQty > stock) throw new IllegalStateException("Stock insuffisant (max " + stock + ")");
 
-            if (cart.getItems().isEmpty()) {
-                cart.setExpiresAt(null);
-                cart.setUpdatedAt(Instant.now());
-            } else {
-                refreshExpiry(cart);
-            }
-
-            cartRepository.save(cart);
-            return toDto(cart);
+            item.setQuantity(newQty);
+            BigDecimal unit = effectivePrice(product);
+            item.setUnitPrice(unit);
+            item.setLineTotal(unit.multiply(BigDecimal.valueOf(newQty)));
         }
 
-        Product product = item.getProduct();
-        int stock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
-
-        // ✅ BLOQUER STOCK
-        if (newQty > stock) {
-            throw new IllegalStateException("Stock insuffisant (max " + stock + ")");
+        // ✅ Si panier vide -> suppression coupon
+        if (cart.getItems().isEmpty()) {
+            clearCoupon(cart);
+            cart.setExpiresAt(null);
+        } else {
+            refreshExpiry(cart);
         }
 
-        item.setQuantity(newQty);
-
-        BigDecimal unit = effectivePrice(product);
-        item.setUnitPrice(unit);
-        item.setLineTotal(unit.multiply(BigDecimal.valueOf(newQty)));
-
-        refreshExpiry(cart);
-        cartRepository.save(cart);
-
-        return toDto(cart);
+        return toDto(cartRepository.save(cart));
     }
 
     @Transactional
     public CartResponse removeItem(Long productId) {
         User user = getAuthenticatedUser();
         Cart cart = getOrCreateCart(user);
-
         clearIfExpired(cart);
 
         cart.getItems().removeIf(item -> item.getProduct().getId().equals(productId));
 
+        // ✅ Si panier vide -> suppression coupon
         if (cart.getItems().isEmpty()) {
+            clearCoupon(cart);
             cart.setExpiresAt(null);
-            cart.setUpdatedAt(Instant.now());
         } else {
             refreshExpiry(cart);
         }
 
-        cartRepository.save(cart);
-        return toDto(cart);
+        return toDto(cartRepository.save(cart));
     }
 
     @Transactional
@@ -208,15 +182,35 @@ public class CartService {
                 .orElseThrow(() -> new EntityNotFoundException("Panier introuvable"));
 
         cart.getItems().clear();
+
+        // ✅ FORCER LA SUPPRESSION DU COUPON
+        clearCoupon(cart);
+
         cart.setExpiresAt(null);
         cart.setUpdatedAt(Instant.now());
-
         cartRepository.save(cart);
     }
 
+    // ✅ METHODE VALIDATION COUPON (appelée par controlleur si besoin)
+    public CouponValidateResponse validateCoupon(String code) {
+        Optional<Coupon> opt = couponRepository.findByCodeIgnoreCase(code);
+        if (opt.isPresent()) {
+            Coupon c = opt.get();
+            if(Boolean.TRUE.equals(c.getActive())) {
+                return new CouponValidateResponse(c.getCode(), true, c.getPercent(), null);
+            }
+        }
+        return new CouponValidateResponse(code, false, null, "Invalide");
+    }
+
     // =========================
-    // EXPIRATION HELPERS (15 min)
+    // PRIVATE HELPERS
     // =========================
+
+    private void clearCoupon(Cart cart) {
+        cart.setCouponCode(null);
+        cart.setCouponPercent(null);
+    }
 
     private void refreshExpiry(Cart cart) {
         cart.setExpiresAt(Instant.now().plus(CART_TTL));
@@ -229,16 +223,12 @@ public class CartService {
 
     private void clearIfExpired(Cart cart) {
         if (!isExpired(cart)) return;
-
         cart.getItems().clear();
+        clearCoupon(cart);
         cart.setExpiresAt(null);
         cart.setUpdatedAt(Instant.now());
         cartRepository.save(cart);
     }
-
-    // =========================
-    // PRIVATE HELPERS
-    // =========================
 
     private User getAuthenticatedUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -255,7 +245,6 @@ public class CartService {
                     newCart.setItems(new ArrayList<>());
                     newCart.setCreatedAt(Instant.now());
                     newCart.setUpdatedAt(Instant.now());
-                    newCart.setExpiresAt(null);
                     return cartRepository.save(newCart);
                 });
     }
@@ -282,7 +271,8 @@ public class CartService {
                     .productId(item.getProduct().getId())
                     .name(item.getProduct().getName())
                     .sku(item.getProduct().getSku())
-                    .unitPrice(item.getUnitPrice() != null ? item.getUnitPrice() : item.getProduct().getPrice())
+                    // On envoie le prix effectif (promo incluse) pour affichage panier
+                    .unitPrice(item.getUnitPrice() != null ? item.getUnitPrice() : effectivePrice(item.getProduct()))
                     .quantity(item.getQuantity())
                     .lineTotal(item.getLineTotal())
                     .imageUrl(imgUrl)
@@ -296,6 +286,9 @@ public class CartService {
                 .totalQuantity(totalQty)
                 .totalAmount(BigDecimal.valueOf(totalAmt))
                 .expiresAt(cart.getExpiresAt())
+                // ✅ MAPPING COUPON
+                .couponCode(cart.getCouponCode())
+                .discountPercent(cart.getCouponPercent() != null ? cart.getCouponPercent() : 0)
                 .build();
     }
 }
