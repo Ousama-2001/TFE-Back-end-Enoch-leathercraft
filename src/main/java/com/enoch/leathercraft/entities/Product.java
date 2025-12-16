@@ -2,6 +2,7 @@ package com.enoch.leathercraft.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Size;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -30,7 +31,9 @@ public class Product {
     @Column(unique = true, length = 180)
     private String slug;
 
-    @Column(columnDefinition = "TEXT")
+    // ✅ MODIFICATION : Limite à 1000 caractères (environ 150 mots)
+    @Column(length = 1000)
+    @Size(max = 1000, message = "La description ne doit pas dépasser 1000 caractères")
     private String description;
 
     private String material;
@@ -57,11 +60,10 @@ public class Product {
 
     // ✅ PROMO
     @Column(precision = 10, scale = 2)
-    private BigDecimal promoPrice;      // nullable
-    private Instant promoStartAt;       // nullable
-    private Instant promoEndAt;         // nullable
+    private BigDecimal promoPrice;
+    private Instant promoStartAt;
+    private Instant promoEndAt;
 
-    // ✅ CODE PROMO (optionnel)
     @Column(length = 40)
     private String promoCode;
 
@@ -87,30 +89,17 @@ public class Product {
     }
 
     // ========================================================================
-    // ✅ LOGIQUE PROMO AJOUTÉE ICI
+    // ✅ LOGIQUE PROMO
     // ========================================================================
-
-    /**
-     * Vérifie si la promotion est active maintenant (dates + prix cohérent).
-     */
     public boolean isPromoValid() {
-        // 1. Vérifier si un prix promo existe et est positif
         if (promoPrice == null || promoPrice.compareTo(BigDecimal.ZERO) <= 0) return false;
-
-        // 2. Vérifier que la promo est bien inférieure au prix de base
         if (promoPrice.compareTo(price) >= 0) return false;
-
-        // 3. Vérifier les dates
         Instant now = Instant.now();
         boolean started = promoStartAt == null || !now.isBefore(promoStartAt);
         boolean notEnded = promoEndAt == null || !now.isAfter(promoEndAt);
-
         return started && notEnded;
     }
 
-    /**
-     * Retourne le VRAI prix à payer (Base ou Promo).
-     */
     public BigDecimal getEffectivePrice() {
         if (isPromoValid()) {
             return promoPrice;
