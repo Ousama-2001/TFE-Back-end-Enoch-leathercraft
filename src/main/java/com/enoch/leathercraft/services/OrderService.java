@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit; // ✅ IMPORTANT
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -40,7 +41,6 @@ public class OrderService {
     // ------------------------------------------------------
     @Transactional
     public OrderResponse createOrderFromCart(String userEmail, CheckoutRequest checkoutRequest) {
-        // 1. Récupération du panier
         Cart cart = cartRepository.findByUser_EmailAndStatus(userEmail, CartStatus.OPEN)
                 .orElseThrow(() -> new EntityNotFoundException("Aucun panier ouvert trouvé"));
 
@@ -53,7 +53,6 @@ public class OrderService {
         order.setCustomerEmail(userEmail);
         order.setStatus(OrderStatus.PENDING);
 
-        // Mapping adresses
         if (checkoutRequest != null) {
             order.setFirstName(checkoutRequest.firstName());
             order.setLastName(checkoutRequest.lastName());
@@ -65,7 +64,6 @@ public class OrderService {
             order.setNotes(checkoutRequest.notes());
         }
 
-        // 2. Calcul du SOUS-TOTAL (Prix des articles sans réduction coupon)
         BigDecimal subTotalAmount = BigDecimal.ZERO;
         Set<Product> updatedProducts = new HashSet<>();
 
@@ -76,11 +74,9 @@ public class OrderService {
             int stock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
             if (stock < quantity) throw new IllegalStateException("Stock insuffisant pour " + product.getName());
 
-            // Décrémentation du stock
             product.setStockQuantity(stock - quantity);
             updatedProducts.add(product);
 
-            // ✅ PRIX EFFECTIF (Promo ou Base)
             BigDecimal effectiveUnitPrice = product.getEffectivePrice();
 
             OrderItem orderItem = OrderItem.builder()
@@ -91,12 +87,9 @@ public class OrderService {
                     .build();
 
             order.addItem(orderItem);
-
-            // On ajoute au total : Prix Effectif * Quantité
             subTotalAmount = subTotalAmount.add(effectiveUnitPrice.multiply(BigDecimal.valueOf(quantity)));
         }
 
-        // 3. APPLICATION DU COUPON (Si code présent)
         BigDecimal discountAmount = BigDecimal.ZERO;
         BigDecimal totalAmount = subTotalAmount;
 
@@ -106,8 +99,6 @@ public class OrderService {
 
             if (couponOpt.isPresent()) {
                 Coupon coupon = couponOpt.get();
-
-                // Vérification validité coupon
                 Instant now = Instant.now();
                 boolean isActive = Boolean.TRUE.equals(coupon.getActive());
                 boolean started = coupon.getStartsAt() == null || !now.isBefore(coupon.getStartsAt());
@@ -115,16 +106,12 @@ public class OrderService {
 
                 if (isActive && started && notExpired) {
                     Integer percent = coupon.getPercent();
-
                     if (percent != null && percent > 0) {
                         BigDecimal pct = BigDecimal.valueOf(percent);
-                        // discount = subtotal * (percent / 100)
                         discountAmount = subTotalAmount.multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
                         order.setCouponCode(coupon.getCode());
                         order.setCouponPercent(percent);
 
-                        // Incrémenter le compteur d'utilisation
                         if(coupon.getUsedCount() == null) coupon.setUsedCount(0);
                         coupon.setUsedCount(coupon.getUsedCount() + 1);
                         couponRepository.save(coupon);
@@ -133,30 +120,33 @@ public class OrderService {
             }
         }
 
-        // Total final
         totalAmount = subTotalAmount.subtract(discountAmount).max(BigDecimal.ZERO);
 
-        // 4. Sauvegarde
         order.setSubtotalAmount(subTotalAmount);
         order.setDiscountAmount(discountAmount);
         order.setTotalAmount(totalAmount);
 
         Order savedOrder = orderRepository.save(order);
         productRepository.saveAll(updatedProducts);
-
-        // Vider le panier
         cartService.clearCart(userEmail);
 
         return toDto(savedOrder);
     }
 
     // ------------------------------------------------------
-    // CLIENT : MES COMMANDES
+    // ✅ CLIENT : MES COMMANDES (MODIFIÉ)
     // ------------------------------------------------------
     @Transactional(readOnly = true)
     public List<OrderResponse> getUserOrders(String userEmail) {
+        // Date limite : il y a 24h
+        Instant oneDayAgo = Instant.now().minus(1, ChronoUnit.DAYS);
+
         return orderRepository.findByCustomerEmailOrderByCreatedAtDesc(userEmail)
-                .stream().map(this::toDto).collect(Collectors.toList());
+                .stream()
+                // 🔥 FILTRE : Si PENDING et créé avant hier -> On cache (et idéalement on annule via un Cron job plus tard)
+                .filter(o -> !(o.getStatus() == OrderStatus.PENDING && o.getCreatedAt().isBefore(oneDayAgo)))
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -203,7 +193,7 @@ public class OrderService {
     }
 
     // ------------------------------------------------------
-    // ✅ ANNULER (AVEC REMISE EN STOCK)
+    // ANNULER
     // ------------------------------------------------------
     @Transactional
     public OrderResponse cancelOrder(Long orderId, String userEmail) {
@@ -213,23 +203,18 @@ public class OrderService {
             throw new IllegalStateException("Commande non annulable");
         }
 
-        // --- DEBUT LOGIQUE REMISE EN STOCK ---
+        // Remise en stock
         List<Product> productsToUpdate = new ArrayList<>();
-
         for (OrderItem item : order.getItems()) {
             Product product = item.getProduct();
             if (product != null) {
                 int quantityToRestore = item.getQuantity();
                 int currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
-
-                // On rajoute la quantité annulée au stock actuel
                 product.setStockQuantity(currentStock + quantityToRestore);
                 productsToUpdate.add(product);
             }
         }
-        // Sauvegarde groupée des produits mis à jour
         productRepository.saveAll(productsToUpdate);
-        // --- FIN LOGIQUE REMISE EN STOCK ---
 
         OrderStatus previous = order.getStatus();
         order.setStatus(OrderStatus.CANCELLED);
@@ -244,15 +229,25 @@ public class OrderService {
     }
 
     // ------------------------------------------------------
-    // STRIPE
+    // ✅ STRIPE (MODIFIÉ : SÉCURITÉ PAIEMENT)
     // ------------------------------------------------------
     @Transactional
     public StripeCheckoutResponse createStripeCheckoutForOrder(Long orderId, String userEmail)
             throws StripeException {
         Order order = getOrderForUserOrThrow(orderId, userEmail);
-        if (order.getStatus() != OrderStatus.PENDING) {
-            throw new IllegalStateException("Commande non payable");
+
+        // 🔥 SÉCURITÉ : Vérifier si la commande n'a pas expiré (24h)
+        Instant oneDayAgo = Instant.now().minus(1, ChronoUnit.DAYS);
+        if (order.getStatus() == OrderStatus.PENDING && order.getCreatedAt().isBefore(oneDayAgo)) {
+            // On l'annule officiellement pour libérer le stock et nettoyer la BDD
+            cancelOrder(orderId, userEmail);
+            throw new IllegalStateException("Le délai de paiement pour cette commande est expiré (24h). La commande a été annulée.");
         }
+
+        if (order.getStatus() != OrderStatus.PENDING) {
+            throw new IllegalStateException("Commande non payable (déjà payée ou annulée)");
+        }
+
         String checkoutUrl = stripeService.createCheckoutSession(toDto(order));
         return new StripeCheckoutResponse(checkoutUrl, order.getReference());
     }

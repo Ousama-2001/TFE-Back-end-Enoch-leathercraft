@@ -1,5 +1,7 @@
+// src/main/java/com/enoch/leathercraft/dto/ProductReviewResponse.java
 package com.enoch.leathercraft.dto;
 
+import com.enoch.leathercraft.entities.ReviewStatus; // Assure-toi d'importer l'enum
 import lombok.Builder;
 import lombok.Data;
 
@@ -14,6 +16,8 @@ public class ProductReviewResponse {
     private String comment;
     private Instant createdAt;
 
-    // true si cet avis appartient à l'utilisateur connecté
-    private boolean mine;
+    private boolean mine; // Est-ce mon avis ?
+
+    // ✅ AJOUT IMPORTANT
+    private ReviewStatus status;
 }

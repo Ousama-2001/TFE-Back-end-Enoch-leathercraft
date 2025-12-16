@@ -1,4 +1,3 @@
-// src/main/java/com/enoch/leathercraft/services/ProductReviewService.java
 package com.enoch.leathercraft.services;
 
 import com.enoch.leathercraft.auth.domain.User;
@@ -33,9 +32,7 @@ public class ProductReviewService {
     //                 MÉTHODES UTILISATEUR
     // =========================================================
 
-    // CRÉATION D'UN AVIS PAR UN USER CONNECTÉ
     public ProductReviewResponse addReview(String userEmail, ProductReviewCreateRequest req) {
-
         Product product = productRepo.findById(req.getProductId())
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
 
@@ -48,37 +45,46 @@ public class ProductReviewService {
                 .authorName(buildAuthorName(user))
                 .rating(req.getRating())
                 .comment(req.getComment())
-                .status(ReviewStatus.VISIBLE)   // avis directement visible
+                .status(ReviewStatus.VISIBLE) // Par défaut : Visible
                 .build();
 
         review = reviewRepo.save(review);
         return toDto(review, true);
     }
 
-    // LECTURE POUR UNE PAGE PRODUIT
     @Transactional(readOnly = true)
     public List<ProductReviewResponse> getReviewsForProduct(Long productId, String currentUserEmail) {
         return reviewRepo.findByProduct_IdOrderByCreatedAtDesc(productId)
                 .stream()
-                // on masque les DELETED pour tout le monde
-                .filter(r -> r.getStatus() != ReviewStatus.DELETED)
+                .filter(r -> shouldShowReview(r, currentUserEmail)) // ✅ Filtre : Visible OU (Supprimé ET à moi)
                 .map(r -> {
-                    boolean mine = false;
-                    if (currentUserEmail != null
-                            && r.getUser() != null
-                            && r.getUser().getEmail() != null) {
-                        mine = currentUserEmail.equalsIgnoreCase(r.getUser().getEmail());
-                    }
+                    boolean mine = isMine(r, currentUserEmail);
                     return toDto(r, mine);
                 })
                 .toList();
     }
 
-    // MISE A JOUR PAR L’AUTEUR UNIQUEMENT
-    public ProductReviewResponse updateReview(String userEmail,
-                                              Long reviewId,
-                                              ProductReviewCreateRequest req) {
+    /**
+     * LOGIQUE D'AFFICHAGE :
+     * 1. Si VISIBLE -> Tout le monde voit.
+     * 2. Si DELETED -> Seul l'auteur voit (pour voir l'alerte "Supprimé").
+     */
+    private boolean shouldShowReview(ProductReview r, String currentUserEmail) {
+        if (r.getStatus() == ReviewStatus.VISIBLE) {
+            return true;
+        }
+        // Si DELETED, on ne montre que si c'est l'auteur
+        return isMine(r, currentUserEmail);
+    }
 
+    private boolean isMine(ProductReview r, String currentUserEmail) {
+        return currentUserEmail != null
+                && r.getUser() != null
+                && r.getUser().getEmail() != null
+                && r.getUser().getEmail().equalsIgnoreCase(currentUserEmail);
+    }
+
+    public ProductReviewResponse updateReview(String userEmail, Long reviewId, ProductReviewCreateRequest req) {
         ProductReview review = reviewRepo.findById(reviewId)
                 .orElseThrow(() -> new EntityNotFoundException("Avis introuvable"));
 
@@ -91,20 +97,20 @@ public class ProductReviewService {
         return toDto(review, true);
     }
 
-    // SUPPRESSION PAR L’AUTEUR (SOFT DELETE)
     public void deleteReview(String userEmail, Long reviewId) {
         ProductReview review = reviewRepo.findById(reviewId)
                 .orElseThrow(() -> new EntityNotFoundException("Avis introuvable"));
 
         checkIsOwner(review, userEmail);
 
+        // Soft Delete
         review.setStatus(ReviewStatus.DELETED);
         review.setDeletedAt(Instant.now());
         reviewRepo.save(review);
     }
 
     // =========================================================
-    //                 MÉTHODES ADMIN (ADMIN + SUPER_ADMIN)
+    //                 MÉTHODES ADMIN
     // =========================================================
 
     @Transactional(readOnly = true)
@@ -118,15 +124,17 @@ public class ProductReviewService {
         return reviews.stream().map(this::toAdminDto).toList();
     }
 
+    // Admin : Basculer entre VISIBLE et DELETED (Soft Delete / Restauration)
     public AdminReviewResponse adminChangeStatus(Long reviewId, ReviewStatus newStatus) {
         ProductReview review = reviewRepo.findById(reviewId)
                 .orElseThrow(() -> new EntityNotFoundException("Avis introuvable"));
 
         review.setStatus(newStatus);
+
         if (newStatus == ReviewStatus.DELETED) {
             review.setDeletedAt(Instant.now());
         } else {
-            review.setDeletedAt(null);
+            review.setDeletedAt(null); // Restauration
         }
 
         review = reviewRepo.save(review);
@@ -134,9 +142,10 @@ public class ProductReviewService {
     }
 
     // =========================================================
-    //                 MÉTHODES SUPER ADMIN
+    //        ✅ MÉTHODES SUPER ADMIN (OBLIGATOIRES POUR LE CONTROLLER)
     // =========================================================
 
+    // 1. Récupérer la corbeille (Soft Deleted)
     @Transactional(readOnly = true)
     public List<AdminReviewResponse> superAdminGetDeleted() {
         return reviewRepo.findByStatusOrderByCreatedAtDesc(ReviewStatus.DELETED)
@@ -145,30 +154,20 @@ public class ProductReviewService {
                 .toList();
     }
 
-    // Hard delete DEFINITIF
+    // 2. Restaurer (Alias vers la méthode admin)
+    public AdminReviewResponse superAdminRestore(Long reviewId) {
+        return adminChangeStatus(reviewId, ReviewStatus.VISIBLE);
+    }
+
+    // 3. Suppression DÉFINITIVE (Hard Delete)
     public void superAdminHardDelete(Long reviewId) {
-        // On vérifie juste, mais on ne jette plus une exception si ça n'existe pas
         if (reviewRepo.existsById(reviewId)) {
             reviewRepo.deleteById(reviewId);
         }
-        // Si ça n'existe pas, on ne fait rien → côté API on renverra 204 quand même
-    }
-
-
-    // Restaurer un avis soft-supprimé
-    public AdminReviewResponse superAdminRestore(Long reviewId) {
-        ProductReview review = reviewRepo.findById(reviewId)
-                .orElseThrow(() -> new EntityNotFoundException("Avis introuvable"));
-
-        review.setStatus(ReviewStatus.VISIBLE);
-        review.setDeletedAt(null);
-
-        review = reviewRepo.save(review);
-        return toAdminDto(review);
     }
 
     // =========================================================
-    //                 HELPERS
+    //                 HELPERS & DTOs
     // =========================================================
 
     private String buildAuthorName(User user) {
@@ -182,7 +181,7 @@ public class ProductReviewService {
         if (review.getUser() == null
                 || review.getUser().getEmail() == null
                 || !review.getUser().getEmail().equalsIgnoreCase(email)) {
-            throw new AccessDeniedException("Vous ne pouvez modifier/supprimer que vos propres avis.");
+            throw new AccessDeniedException("Non autorisé.");
         }
     }
 
@@ -194,6 +193,7 @@ public class ProductReviewService {
                 .comment(r.getComment())
                 .createdAt(r.getCreatedAt())
                 .mine(mine)
+                .status(r.getStatus()) // Nécessaire pour l'affichage conditionnel front
                 .build();
     }
 
