@@ -76,16 +76,17 @@ public class OrderService {
             int stock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
             if (stock < quantity) throw new IllegalStateException("Stock insuffisant pour " + product.getName());
 
+            // Décrémentation du stock
             product.setStockQuantity(stock - quantity);
             updatedProducts.add(product);
 
-            // ✅ CORRECTION ICI : On récupère le PRIX EFFECTIF (Promo ou Base)
+            // ✅ PRIX EFFECTIF (Promo ou Base)
             BigDecimal effectiveUnitPrice = product.getEffectivePrice();
 
             OrderItem orderItem = OrderItem.builder()
                     .product(product)
                     .productName(product.getName())
-                    .unitPrice(effectiveUnitPrice) // On stocke le prix promo si applicable
+                    .unitPrice(effectiveUnitPrice)
                     .quantity(quantity)
                     .build();
 
@@ -201,6 +202,9 @@ public class OrderService {
         return toDto(saved);
     }
 
+    // ------------------------------------------------------
+    // ✅ ANNULER (AVEC REMISE EN STOCK)
+    // ------------------------------------------------------
     @Transactional
     public OrderResponse cancelOrder(Long orderId, String userEmail) {
         Order order = getOrderForUserOrThrow(orderId, userEmail);
@@ -208,6 +212,24 @@ public class OrderService {
         if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.PAID) {
             throw new IllegalStateException("Commande non annulable");
         }
+
+        // --- DEBUT LOGIQUE REMISE EN STOCK ---
+        List<Product> productsToUpdate = new ArrayList<>();
+
+        for (OrderItem item : order.getItems()) {
+            Product product = item.getProduct();
+            if (product != null) {
+                int quantityToRestore = item.getQuantity();
+                int currentStock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+
+                // On rajoute la quantité annulée au stock actuel
+                product.setStockQuantity(currentStock + quantityToRestore);
+                productsToUpdate.add(product);
+            }
+        }
+        // Sauvegarde groupée des produits mis à jour
+        productRepository.saveAll(productsToUpdate);
+        // --- FIN LOGIQUE REMISE EN STOCK ---
 
         OrderStatus previous = order.getStatus();
         order.setStatus(OrderStatus.CANCELLED);
