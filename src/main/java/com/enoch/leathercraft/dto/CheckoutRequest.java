@@ -9,5 +9,6 @@ public record CheckoutRequest(
         String postalCode,
         String city,
         String country,
-        String notes
+        String notes,
+        String promoCode // ✅ AJOUTÉ ICI
 ) { }

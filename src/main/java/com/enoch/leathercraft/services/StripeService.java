@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 @Service
 public class StripeService {
@@ -28,14 +29,24 @@ public class StripeService {
 
         SessionCreateParams.Builder builder = SessionCreateParams.builder()
                 .setMode(SessionCreateParams.Mode.PAYMENT)
-                // 🔹 On inclut le {CHECKOUT_SESSION_ID} dans l'URL de succès
                 .setSuccessUrl(frontendUrl + "/order-success/" + order.getReference() + "?session_id={CHECKOUT_SESSION_ID}")
                 .setCancelUrl(frontendUrl + "/checkout?canceled=true")
                 .putMetadata("orderReference", order.getReference());
 
+        // ✅ Calcul du multiplicateur de réduction (ex: -10% => multiplier par 0.90)
+        BigDecimal discountMultiplier = BigDecimal.ONE;
+        if (order.getCouponPercent() != null && order.getCouponPercent() > 0) {
+            BigDecimal percent = BigDecimal.valueOf(order.getCouponPercent());
+            discountMultiplier = BigDecimal.ONE.subtract(percent.divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+        }
+
         // Ajouter les lignes de commande
         for (OrderItemResponse item : order.getItems()) {
-            long unitAmountInCents = item.getUnitPrice()
+
+            // ✅ On applique la réduction sur le prix unitaire envoyé à Stripe
+            BigDecimal discountedUnitPrice = item.getUnitPrice().multiply(discountMultiplier);
+
+            long unitAmountInCents = discountedUnitPrice
                     .multiply(BigDecimal.valueOf(100))
                     .longValue();
 
@@ -59,9 +70,8 @@ public class StripeService {
         }
 
         SessionCreateParams params = builder.build();
-
         Session session = Session.create(params);
 
-        return session.getUrl(); // URL complète Stripe Checkout
+        return session.getUrl();
     }
 }

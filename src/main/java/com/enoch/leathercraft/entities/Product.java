@@ -1,4 +1,3 @@
-// src/main/java/com/enoch/leathercraft/entities/Product.java
 package com.enoch.leathercraft.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -85,5 +84,37 @@ public class Product {
     @PreUpdate
     void onUpdate() {
         updatedAt = Instant.now();
+    }
+
+    // ========================================================================
+    // ✅ LOGIQUE PROMO AJOUTÉE ICI
+    // ========================================================================
+
+    /**
+     * Vérifie si la promotion est active maintenant (dates + prix cohérent).
+     */
+    public boolean isPromoValid() {
+        // 1. Vérifier si un prix promo existe et est positif
+        if (promoPrice == null || promoPrice.compareTo(BigDecimal.ZERO) <= 0) return false;
+
+        // 2. Vérifier que la promo est bien inférieure au prix de base
+        if (promoPrice.compareTo(price) >= 0) return false;
+
+        // 3. Vérifier les dates
+        Instant now = Instant.now();
+        boolean started = promoStartAt == null || !now.isBefore(promoStartAt);
+        boolean notEnded = promoEndAt == null || !now.isAfter(promoEndAt);
+
+        return started && notEnded;
+    }
+
+    /**
+     * Retourne le VRAI prix à payer (Base ou Promo).
+     */
+    public BigDecimal getEffectivePrice() {
+        if (isPromoValid()) {
+            return promoPrice;
+        }
+        return price;
     }
 }

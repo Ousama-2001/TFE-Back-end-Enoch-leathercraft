@@ -22,13 +22,10 @@ import java.time.format.DateTimeFormatter;
 @RequiredArgsConstructor
 public class InvoicePdfService {
 
-    // ✅ TVA fictive (démo)
     private static final String SHOP_VAT = "BE0999.999.999 (démo)";
     private static final String SHOP_NAME = "Enoch Leathercraft Shop";
     private static final String SHOP_ADDRESS = "Rue de la Maroquinerie 42, 1000 Bruxelles, Belgique";
     private static final String SHOP_EMAIL = "saidenoch@gmail.com";
-
-    // ✅ chemin relatif (depuis ton dossier du projet back)
     private static final String LOGO_PATH = "uploads/products/logo.jpg";
 
     public byte[] generate(Order order) {
@@ -42,10 +39,9 @@ public class InvoicePdfService {
             Font bold = new Font(Font.HELVETICA, 12, Font.BOLD);
             Font normal = new Font(Font.HELVETICA, 12, Font.NORMAL);
             Font small = new Font(Font.HELVETICA, 10, Font.NORMAL);
+            Font redFont = new Font(Font.HELVETICA, 12, Font.NORMAL, Color.RED);
 
-            // ---------------------------------------------------
-            // HEADER : logo + titre
-            // ---------------------------------------------------
+            // HEADER
             PdfPTable header = new PdfPTable(2);
             header.setWidthPercentage(100);
             header.setWidths(new float[]{1.2f, 2.8f});
@@ -70,9 +66,7 @@ public class InvoicePdfService {
             document.add(header);
             document.add(Chunk.NEWLINE);
 
-            // ---------------------------------------------------
-            // INFOS ENTREPRISE / FACTURE
-            // ---------------------------------------------------
+            // INFOS
             PdfPTable info = new PdfPTable(2);
             info.setWidthPercentage(100);
             info.setWidths(new float[]{3f, 2f});
@@ -86,13 +80,9 @@ public class InvoicePdfService {
 
             PdfPCell right = new PdfPCell();
             right.setBorder(Rectangle.NO_BORDER);
-
             String invoiceNumber = "INV-" + order.getReference();
             String dateStr = order.getCreatedAt() == null ? "" :
-                    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
-                            .withZone(ZoneId.systemDefault())
-                            .format(order.getCreatedAt());
-
+                    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.systemDefault()).format(order.getCreatedAt());
             right.addElement(new Phrase("Facture : " + invoiceNumber, normal));
             right.addElement(new Phrase("Commande : " + order.getReference(), normal));
             right.addElement(new Phrase("Date : " + dateStr, normal));
@@ -100,14 +90,10 @@ public class InvoicePdfService {
             info.addCell(left);
             info.addCell(right);
             document.add(info);
-
             document.add(Chunk.NEWLINE);
             document.add(Chunk.NEWLINE);
 
-            // ---------------------------------------------------
-            // FACTURÉ À (nom/prénom + email)
-            // + adresse livraison
-            // ---------------------------------------------------
+            // ADDRESSES
             String fullName = safe(order.getFirstName()) + " " + safe(order.getLastName());
             if (fullName.trim().isEmpty()) fullName = order.getCustomerEmail();
 
@@ -120,34 +106,28 @@ public class InvoicePdfService {
             Paragraph ship = new Paragraph("Adresse de livraison :", bold);
             document.add(ship);
             document.add(new Paragraph(safe(order.getStreet()), normal));
-
             String cityLine = (safe(order.getPostalCode()) + " " + safe(order.getCity())).trim();
             if (!cityLine.isBlank()) document.add(new Paragraph(cityLine, normal));
-
             document.add(new Paragraph(safe(order.getCountry()), normal));
-
             document.add(Chunk.NEWLINE);
             document.add(Chunk.NEWLINE);
 
-            // ---------------------------------------------------
-            // TABLE PRODUITS
-            // ---------------------------------------------------
+            // ITEMS TABLE
             PdfPTable table = new PdfPTable(4);
             table.setWidthPercentage(100);
             table.setWidths(new float[]{3.2f, 1.2f, 0.7f, 1.3f});
 
             addHeaderCell(table, "Produit");
-            addHeaderCell(table, "Prix");
+            addHeaderCell(table, "Prix Unit.");
             addHeaderCell(table, "Qté");
-            addHeaderCell(table, "Total");
+            addHeaderCell(table, "Total Ligne");
 
-            BigDecimal total = BigDecimal.ZERO;
-
+            // Pour l'affichage des lignes, on affiche le prix de base (sans réduc)
+            // car la réduc est globale en bas de facture.
             for (OrderItem item : order.getItems()) {
                 BigDecimal unit = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
                 int qty = item.getQuantity() != null ? item.getQuantity() : 0;
                 BigDecimal lineTotal = unit.multiply(BigDecimal.valueOf(qty));
-                total = total.add(lineTotal);
 
                 table.addCell(cell(item.getProductName(), normal));
                 table.addCell(cell(formatMoney(unit) + " €", normal));
@@ -156,29 +136,38 @@ public class InvoicePdfService {
             }
 
             document.add(table);
-
-            document.add(Chunk.NEWLINE);
             document.add(Chunk.NEWLINE);
 
-            // ---------------------------------------------------
-            // TOTAL + TVA
-            // ---------------------------------------------------
+            // TOTALS (AVEC PROMO)
             PdfPTable totals = new PdfPTable(1);
             totals.setWidthPercentage(100);
-
             PdfPCell totalCell = new PdfPCell();
             totalCell.setBorder(Rectangle.NO_BORDER);
             totalCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
 
-            Paragraph totalP = new Paragraph("TOTAL : " + formatMoney(total) + " €", new Font(Font.HELVETICA, 14, Font.BOLD));
+            // 1. Sous-total (si différent du total)
+            if (order.getDiscountAmount() != null && order.getDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
+                Paragraph subP = new Paragraph("Sous-total : " + formatMoney(order.getSubtotalAmount()) + " €", normal);
+                subP.setAlignment(Element.ALIGN_RIGHT);
+                totalCell.addElement(subP);
+
+                String label = "Réduction";
+                if(order.getCouponCode() != null) label += " (" + order.getCouponCode() + ")";
+
+                Paragraph discP = new Paragraph(label + " : -" + formatMoney(order.getDiscountAmount()) + " €", redFont);
+                discP.setAlignment(Element.ALIGN_RIGHT);
+                totalCell.addElement(discP);
+            }
+
+            // 2. Total Final
+            Paragraph totalP = new Paragraph("TOTAL PAYÉ : " + formatMoney(order.getTotalAmount()) + " €", new Font(Font.HELVETICA, 14, Font.BOLD));
             totalP.setAlignment(Element.ALIGN_RIGHT);
 
-            Paragraph vatP = new Paragraph("TVA : 0% (facture de démonstration)", small);
+            Paragraph vatP = new Paragraph("TVA incluse (régime particulier)", small);
             vatP.setAlignment(Element.ALIGN_RIGHT);
 
             totalCell.addElement(totalP);
             totalCell.addElement(vatP);
-
             totals.addCell(totalCell);
             document.add(totals);
 
@@ -193,7 +182,6 @@ public class InvoicePdfService {
         }
     }
 
-    // ---------------- helpers ----------------
     private static void addHeaderCell(PdfPTable table, String text) {
         Font headerFont = new Font(Font.HELVETICA, 12, Font.BOLD);
         PdfPCell c = new PdfPCell(new Phrase(text, headerFont));
@@ -208,9 +196,7 @@ public class InvoicePdfService {
         return c;
     }
 
-    private static String safe(String s) {
-        return s == null ? "" : s.trim();
-    }
+    private static String safe(String s) { return s == null ? "" : s.trim(); }
 
     private static String formatMoney(BigDecimal v) {
         DecimalFormat df = new DecimalFormat("0.00");
