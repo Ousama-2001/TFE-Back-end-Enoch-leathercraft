@@ -36,6 +36,21 @@ public class CartService {
     private static final Duration CART_TTL = Duration.ofMinutes(15);
 
     // =========================
+    // ✅ PROMO helpers (prix effectif)
+    // =========================
+    private boolean isOnSale(Product p, Instant now) {
+        if (p.getPromoPrice() == null) return false;
+        if (p.getPromoStartAt() != null && now.isBefore(p.getPromoStartAt())) return false;
+        if (p.getPromoEndAt() != null && now.isAfter(p.getPromoEndAt())) return false;
+        return true;
+    }
+
+    private BigDecimal effectivePrice(Product p) {
+        Instant now = Instant.now();
+        return isOnSale(p, now) ? p.getPromoPrice() : p.getPrice();
+    }
+
+    // =========================
     // PUBLIC API
     // =========================
 
@@ -46,7 +61,6 @@ public class CartService {
 
         clearIfExpired(cart);
 
-        // on recharge au cas où clearIfExpired a sauvegardé
         cart = getOrCreateCart(user);
         return toDto(cart);
     }
@@ -61,28 +75,45 @@ public class CartService {
         Product product = productRepository.findById(req.getProductId())
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
 
+        int stock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+        if (stock <= 0) {
+            throw new IllegalStateException("Produit en rupture de stock");
+        }
+
         Optional<CartItem> existingItem = cart.getItems().stream()
                 .filter(item -> item.getProduct().getId().equals(product.getId()))
                 .findFirst();
 
         int qtyToAdd = (req.getQuantity() == null || req.getQuantity() < 1) ? 1 : req.getQuantity();
 
+        BigDecimal unit = effectivePrice(product);
+
         if (existingItem.isPresent()) {
             CartItem item = existingItem.get();
             int newQuantity = item.getQuantity() + qtyToAdd;
 
+            // ✅ BLOQUER STOCK
+            if (newQuantity > stock) {
+                throw new IllegalStateException("Stock insuffisant (max " + stock + ")");
+            }
+
             item.setQuantity(newQuantity);
-            item.setUnitPrice(product.getPrice());
-            item.setLineTotal(product.getPrice().multiply(BigDecimal.valueOf(newQuantity)));
+            item.setUnitPrice(unit);
+            item.setLineTotal(unit.multiply(BigDecimal.valueOf(newQuantity)));
 
         } else {
-            BigDecimal total = product.getPrice().multiply(BigDecimal.valueOf(qtyToAdd));
+            // ✅ BLOQUER STOCK
+            if (qtyToAdd > stock) {
+                throw new IllegalStateException("Stock insuffisant (max " + stock + ")");
+            }
+
+            BigDecimal total = unit.multiply(BigDecimal.valueOf(qtyToAdd));
 
             CartItem newItem = CartItem.builder()
                     .cart(cart)
                     .product(product)
                     .quantity(qtyToAdd)
-                    .unitPrice(product.getPrice())
+                    .unitPrice(unit)
                     .lineTotal(total)
                     .build();
 
@@ -124,10 +155,17 @@ public class CartService {
             return toDto(cart);
         }
 
+        Product product = item.getProduct();
+        int stock = product.getStockQuantity() != null ? product.getStockQuantity() : 0;
+
+        // ✅ BLOQUER STOCK
+        if (newQty > stock) {
+            throw new IllegalStateException("Stock insuffisant (max " + stock + ")");
+        }
+
         item.setQuantity(newQty);
 
-        // prix actuel produit (si tu veux figer, mets item.getUnitPrice())
-        BigDecimal unit = item.getProduct().getPrice();
+        BigDecimal unit = effectivePrice(product);
         item.setUnitPrice(unit);
         item.setLineTotal(unit.multiply(BigDecimal.valueOf(newQty)));
 
@@ -217,7 +255,7 @@ public class CartService {
                     newCart.setItems(new ArrayList<>());
                     newCart.setCreatedAt(Instant.now());
                     newCart.setUpdatedAt(Instant.now());
-                    newCart.setExpiresAt(null); // pas de timer tant que panier vide
+                    newCart.setExpiresAt(null);
                     return cartRepository.save(newCart);
                 });
     }
@@ -248,7 +286,7 @@ public class CartService {
                     .quantity(item.getQuantity())
                     .lineTotal(item.getLineTotal())
                     .imageUrl(imgUrl)
-                    .stockQuantity(item.getProduct().getStockQuantity()) // ✅ AJOUT
+                    .stockQuantity(item.getProduct().getStockQuantity())
                     .build();
         }).collect(Collectors.toList());
 
@@ -257,7 +295,7 @@ public class CartService {
                 .items(itemsDto)
                 .totalQuantity(totalQty)
                 .totalAmount(BigDecimal.valueOf(totalAmt))
-                .expiresAt(cart.getExpiresAt()) // ✅ nécessite le champ dans CartResponse
+                .expiresAt(cart.getExpiresAt())
                 .build();
     }
 }

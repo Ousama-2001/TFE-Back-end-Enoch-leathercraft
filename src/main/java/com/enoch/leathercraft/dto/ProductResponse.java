@@ -1,9 +1,9 @@
-// src/main/java/com/enoch/leathercraft/dto/ProductResponse.java
 package com.enoch.leathercraft.dto;
 
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 @Getter @Setter
@@ -16,15 +16,19 @@ public class ProductResponse {
     private String name;
     private String slug;
     private String description;
+
     private BigDecimal price;
+
+    // ✅ promo brute (optionnelle) : DATE SEULEMENT
+    private BigDecimal promoPrice;
+    private LocalDate promoStartAt;
+    private LocalDate promoEndAt;
+
     private String currency;
     private Integer weightGrams;
     private Boolean isActive;
 
-    // ✅ compat front actuel
     private List<String> imageUrls;
-
-    // 🔥 CRUD images admin
     private List<ProductImageResponse> images;
 
     private Integer stockQuantity;

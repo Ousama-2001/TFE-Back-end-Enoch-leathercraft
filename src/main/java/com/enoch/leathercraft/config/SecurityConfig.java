@@ -68,8 +68,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/cart/**").hasAnyRole("CUSTOMER", "ADMIN", "SUPER_ADMIN")
                         .requestMatchers("/api/orders/**").hasAnyRole("CUSTOMER", "ADMIN", "SUPER_ADMIN")
 
-                        // ✅ Admin
-                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
+                        // ✅ Admin (FIX: authority explicite)
+                        .requestMatchers("/api/admin/**")
+                        .hasAnyAuthority("ROLE_ADMIN", "ROLE_SUPER_ADMIN")
 
                         // ✅ Super-admin partagés (admin + superadmin)
                         .requestMatchers("/api/super-admin/contact-messages/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
@@ -77,6 +78,9 @@ public class SecurityConfig {
 
                         // ✅ Le reste du super-admin : uniquement super admin
                         .requestMatchers("/api/super-admin/**").hasRole("SUPER_ADMIN")
+
+                        // ✅ Validation coupon public
+                        .requestMatchers(HttpMethod.GET, "/api/coupons/validate").permitAll()
 
                         // ✅ Tout le reste
                         .anyRequest().authenticated()

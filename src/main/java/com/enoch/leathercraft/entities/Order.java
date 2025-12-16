@@ -1,5 +1,6 @@
 package com.enoch.leathercraft.entities;
 
+import com.enoch.leathercraft.auth.domain.User;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -39,6 +40,18 @@ public class Order {
 
     @Column(length = 1000)
     private String notes;
+
+    private BigDecimal subtotalAmount;
+    private BigDecimal discountAmount;
+
+    @Column(length = 80)
+    private String couponCode;
+
+    private Integer couponPercent;
+
+    @ManyToOne
+    @JoinColumn(name="customer_id")
+    private User customer;
 
     // Lignes de commande
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)

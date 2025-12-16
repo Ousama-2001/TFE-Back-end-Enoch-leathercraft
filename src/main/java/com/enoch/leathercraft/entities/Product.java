@@ -56,12 +56,18 @@ public class Product {
     @Builder.Default
     private Integer stockQuantity = 0;
 
+    // ✅ PROMO
+    @Column(precision = 10, scale = 2)
+    private BigDecimal promoPrice;      // nullable
+    private Instant promoStartAt;       // nullable
+    private Instant promoEndAt;         // nullable
+
+    // ✅ CODE PROMO (optionnel)
+    @Column(length = 40)
+    private String promoCode;
+
     // 🔥 IMAGES
-    @OneToMany(
-            mappedBy = "product",
-            cascade = CascadeType.ALL,
-            orphanRemoval = true
-    )
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private Set<ProductImage> images = new HashSet<>();
 

@@ -22,7 +22,9 @@ public class AdminProductController {
 
     private final ProductService productService;
     private final FileStorageService fileStorageService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // ✅ IMPORTANT : ObjectMapper injecté (config Spring => LocalDate OK)
+    private final ObjectMapper objectMapper;
 
     // =========================
     // ✅ CREATE : multi images
@@ -124,7 +126,6 @@ public class AdminProductController {
     // ======================================================
 
     // ✅ ajouter des images à un produit existant
-    // POST /api/admin/products/{id}/images  (multipart) files[]
     @PostMapping(value = "/{id}/images", consumes = {"multipart/form-data"})
     public ResponseEntity<List<ProductImageResponse>> addImages(
             @PathVariable Long id,
@@ -159,7 +160,6 @@ public class AdminProductController {
     }
 
     // ✅ réordonner les images
-    // body JSON: [1,5,3,2]
     @PutMapping("/{productId}/images/reorder")
     public ResponseEntity<List<ProductImageResponse>> reorder(
             @PathVariable Long productId,
@@ -167,10 +167,10 @@ public class AdminProductController {
     ) {
         return ResponseEntity.ok(productService.reorderImages(productId, orderedImageIds));
     }
-    // ✅ récupérer les images d’un produit (avec ids/primary/position)
+
+    // ✅ récupérer les images d’un produit
     @GetMapping("/{id}/images")
     public List<ProductImageResponse> getImages(@PathVariable Long id) {
         return productService.getImages(id);
     }
-
 }

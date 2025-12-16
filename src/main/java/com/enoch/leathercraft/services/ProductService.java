@@ -1,4 +1,3 @@
-// src/main/java/com/enoch/leathercraft/services/ProductService.java
 package com.enoch.leathercraft.services;
 
 import com.enoch.leathercraft.dto.ProductCreateRequest;
@@ -17,7 +16,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,7 +33,6 @@ public class ProductService {
     private final CategoryRepository categoryRepository;
     private final ProductCategoryRepository productCategoryRepository;
     private final FileStorageService fileStorageService;
-
 
     // =========================
     // ✅ PRODUITS ACTIFS
@@ -68,36 +69,56 @@ public class ProductService {
     }
 
     // =========================
-    // ✅ CREATE (multi images)
+    // ✅ CREATE
     // =========================
     @Transactional
     public ProductResponse create(ProductCreateRequest req, List<String> imageUrls) {
+
+        normalizePromo(req);
+
+        Instant promoStart = startOfDayUtc(req.getPromoStartAt());
+        Instant promoEnd = endOfDayUtc(req.getPromoEndAt());
+
         Product p = Product.builder()
                 .sku(req.getSku())
                 .name(req.getName())
                 .slug(req.getSlug())
                 .description(req.getDescription())
-                .price(req.getPrice() != null ? req.getPrice().max(java.math.BigDecimal.ZERO) : java.math.BigDecimal.ZERO)
-                .currency(req.getCurrency() != null ? req.getCurrency() : "EUR")
+                .material(req.getMaterial())
+
+                .price(safeMoney(req.getPrice()))
+                .currency((req.getCurrency() == null || req.getCurrency().isBlank()) ? "EUR" : req.getCurrency())
                 .weightGrams(req.getWeightGrams())
+
                 .isActive(req.getIsActive() != null ? req.getIsActive() : Boolean.TRUE)
                 .stockQuantity(req.getStockQuantity() != null ? Math.max(req.getStockQuantity(), 0) : 0)
+
+                // ✅ promo
+                .promoPrice(req.getPromoPrice())
+                .promoStartAt(promoStart)
+                .promoEndAt(promoEnd)
+
                 .deleted(false)
                 .build();
 
+        // ✅ images
         if (imageUrls != null && !imageUrls.isEmpty()) {
             int pos = 0;
             for (String url : imageUrls) {
+                if (url == null || url.isBlank()) continue;
+
                 ProductImage img = ProductImage.builder()
                         .url(url)
                         .altText(req.getName())
                         .position(pos)
-                        .isPrimary(pos == 0)   // ✅ ICI (PAS .primary)
+                        .isPrimary(pos == 0)
                         .build();
                 p.addImage(img);
                 pos++;
             }
         }
+
+        ensurePrimaryImage(p);
 
         p = repo.save(p);
         updateProductCategories(p.getId(), req.getSegmentCategoryId(), req.getTypeCategoryId());
@@ -105,49 +126,63 @@ public class ProductService {
     }
 
     // =========================
-    // ✅ UPDATE (ajoute images optionnelles)
+    // ✅ UPDATE
     // =========================
     @Transactional
     public ProductResponse update(Long id, ProductCreateRequest req, List<String> newImageUrls) {
         Product existing = repo.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
 
+        normalizePromo(req);
+
         existing.setSku(req.getSku());
         existing.setName(req.getName());
         existing.setSlug(req.getSlug());
         existing.setDescription(req.getDescription());
-        existing.setPrice(req.getPrice() != null ? req.getPrice().max(java.math.BigDecimal.ZERO) : java.math.BigDecimal.ZERO);
-        existing.setCurrency(req.getCurrency() != null ? req.getCurrency() : existing.getCurrency());
+        existing.setMaterial(req.getMaterial());
+
+        existing.setPrice(safeMoney(req.getPrice()));
+
+        if (req.getCurrency() != null && !req.getCurrency().isBlank()) {
+            existing.setCurrency(req.getCurrency());
+        } else if (existing.getCurrency() == null || existing.getCurrency().isBlank()) {
+            existing.setCurrency("EUR");
+        }
+
         existing.setWeightGrams(req.getWeightGrams());
-        existing.setIsActive(req.getIsActive() != null ? req.getIsActive() : existing.getIsActive());
-        existing.setUpdatedAt(Instant.now());
+        if (req.getIsActive() != null) existing.setIsActive(req.getIsActive());
 
         if (req.getStockQuantity() != null) {
             existing.setStockQuantity(Math.max(req.getStockQuantity(), 0));
         }
 
+        // ✅ promo
+        existing.setPromoPrice(req.getPromoPrice());
+        existing.setPromoStartAt(startOfDayUtc(req.getPromoStartAt()));
+        existing.setPromoEndAt(endOfDayUtc(req.getPromoEndAt()));
+
+        existing.setUpdatedAt(Instant.now());
 
         // ✅ ajoute des images (sans supprimer les anciennes)
         if (newImageUrls != null && !newImageUrls.isEmpty()) {
             int startPos = existing.getImages() != null ? existing.getImages().size() : 0;
 
-            for (int i = 0; i < newImageUrls.size(); i++) {
+            int added = 0;
+            for (String url : newImageUrls) {
+                if (url == null || url.isBlank()) continue;
+
                 ProductImage img = ProductImage.builder()
-                        .url(newImageUrls.get(i))
+                        .url(url)
                         .altText(existing.getName())
-                        .position(startPos + i)
-                        .isPrimary(false)     // ✅ ICI (PAS .primary)
+                        .position(startPos + added)
+                        .isPrimary(false)
                         .build();
                 existing.addImage(img);
-            }
-
-            // si aucune primaire -> mettre la 1ère en primaire
-            boolean hasPrimary = existing.getImages().stream()
-                    .anyMatch(im -> Boolean.TRUE.equals(im.getPrimary())); // compat ok
-            if (!hasPrimary && !existing.getImages().isEmpty()) {
-                existing.getImages().iterator().next().setPrimary(true);
+                added++;
             }
         }
+
+        ensurePrimaryImage(existing);
 
         existing = repo.save(existing);
         updateProductCategories(existing.getId(), req.getSegmentCategoryId(), req.getTypeCategoryId());
@@ -155,7 +190,7 @@ public class ProductService {
     }
 
     // =========================
-    // ✅ SOFT DELETE / ARCHIVE
+    // ✅ ARCHIVE / RESTORE
     // =========================
     @Transactional
     public void delete(Long id) {
@@ -192,23 +227,27 @@ public class ProductService {
     public ProductResponse updateStock(Long id, Integer newQty) {
         Product p = repo.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
-        p.setStockQuantity(newQty != null ? newQty : 0);
+
+        int qty = (newQty == null) ? 0 : Math.max(newQty, 0);
+        p.setStockQuantity(qty);
+
         p.setUpdatedAt(Instant.now());
         repo.save(p);
         return toDto(p);
     }
 
     public List<ProductResponse> findLowStock(int threshold) {
+        int th = Math.max(threshold, 0);
+
         return repo.findByDeletedFalse().stream()
-                .filter(p -> p.getStockQuantity() != null && p.getStockQuantity() <= threshold)
+                .filter(p -> p.getStockQuantity() != null && p.getStockQuantity() <= th)
                 .map(this::toDto)
                 .toList();
     }
 
-    // ======================================================
-    // ✅ CRUD IMAGES
-    // ======================================================
-
+    // =========================
+    // ✅ IMAGES CRUD
+    // =========================
     @Transactional
     public List<ProductImageResponse> addImages(Long productId, List<String> urls) {
         Product p = repo.findByIdAndDeletedFalse(productId)
@@ -217,21 +256,22 @@ public class ProductService {
         if (urls == null || urls.isEmpty()) return getImages(productId);
 
         int startPos = p.getImages() != null ? p.getImages().size() : 0;
+        int added = 0;
 
-        for (int i = 0; i < urls.size(); i++) {
+        for (String url : urls) {
+            if (url == null || url.isBlank()) continue;
+
             ProductImage img = ProductImage.builder()
-                    .url(urls.get(i))
+                    .url(url)
                     .altText(p.getName())
-                    .position(startPos + i)
-                    .isPrimary(false)     // ✅ ICI (PAS .primary)
+                    .position(startPos + added)
+                    .isPrimary(false)
                     .build();
             p.addImage(img);
+            added++;
         }
 
-        boolean hasPrimary = p.getImages().stream().anyMatch(im -> Boolean.TRUE.equals(im.getPrimary()));
-        if (!hasPrimary && !p.getImages().isEmpty()) {
-            p.getImages().iterator().next().setPrimary(true);
-        }
+        ensurePrimaryImage(p);
 
         repo.save(p);
         return getImages(productId);
@@ -252,18 +292,15 @@ public class ProductService {
         boolean wasPrimary = Boolean.TRUE.equals(img.getPrimary());
         String urlToDelete = img.getUrl();
 
-        // supprime DB
         p.getImages().remove(img);
         imageRepo.delete(img);
         repo.save(p);
 
-        // ✅ réordonner positions
         List<ProductImage> remaining = imageRepo.findByProductIdOrderByPositionAsc(productId);
         for (int i = 0; i < remaining.size(); i++) {
             remaining.get(i).setPosition(i);
         }
 
-        // ✅ si primaire supprimée -> première devient primaire
         if (!remaining.isEmpty()) {
             boolean hasPrimary = remaining.stream().anyMatch(im -> Boolean.TRUE.equals(im.getPrimary()));
             if (!hasPrimary || wasPrimary) {
@@ -272,62 +309,8 @@ public class ProductService {
             }
             imageRepo.saveAll(remaining);
         }
-        // ✅ suppression physique du fichier
 
         fileStorageService.deleteByUrl(urlToDelete);
-    }
-
-    @Transactional
-    public List<ProductImageResponse> setPrimaryImage(Long productId, Long imageId) {
-        repo.findByIdAndDeletedFalse(productId)
-                .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
-
-        List<ProductImage> imgs = imageRepo.findByProductIdOrderByPositionAsc(productId);
-        if (imgs.isEmpty()) return List.of();
-
-        boolean found = false;
-        for (ProductImage img : imgs) {
-            if (Objects.equals(img.getId(), imageId)) {
-                img.setPrimary(true);
-                found = true;
-            } else {
-                img.setPrimary(false);
-            }
-        }
-
-        if (!found) throw new EntityNotFoundException("Image introuvable pour ce produit");
-
-        imageRepo.saveAll(imgs);
-        return imgs.stream().map(this::toImageDto).toList();
-    }
-
-    @Transactional
-    public List<ProductImageResponse> reorderImages(Long productId, List<Long> orderedImageIds) {
-        repo.findByIdAndDeletedFalse(productId)
-                .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
-
-        List<ProductImage> imgs = imageRepo.findByProductIdOrderByPositionAsc(productId);
-        if (imgs.isEmpty()) return List.of();
-
-        Map<Long, ProductImage> map = imgs.stream()
-                .collect(Collectors.toMap(ProductImage::getId, x -> x));
-
-        int pos = 0;
-        for (Long id : orderedImageIds) {
-            ProductImage img = map.get(id);
-            if (img != null) img.setPosition(pos++);
-        }
-
-        for (ProductImage img : imgs) {
-            if (!orderedImageIds.contains(img.getId())) {
-                img.setPosition(pos++);
-            }
-        }
-
-        imageRepo.saveAll(imgs);
-
-        List<ProductImage> sorted = imageRepo.findByProductIdOrderByPositionAsc(productId);
-        return sorted.stream().map(this::toImageDto).toList();
     }
 
     public List<ProductImageResponse> getImages(Long productId) {
@@ -369,10 +352,65 @@ public class ProductService {
         }
     }
 
+    @Transactional
+    public List<ProductImageResponse> setPrimaryImage(Long productId, Long imageId) {
+        repo.findByIdAndDeletedFalse(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
+
+        List<ProductImage> imgs = imageRepo.findByProductIdOrderByPositionAsc(productId);
+        if (imgs.isEmpty()) return List.of();
+
+        boolean found = false;
+        for (ProductImage img : imgs) {
+            if (Objects.equals(img.getId(), imageId)) {
+                img.setPrimary(true);
+                found = true;
+            } else {
+                img.setPrimary(false);
+            }
+        }
+        if (!found) throw new EntityNotFoundException("Image introuvable pour ce produit");
+
+        imageRepo.saveAll(imgs);
+        return imgs.stream().map(this::toImageDto).toList();
+    }
+
+    @Transactional
+    public List<ProductImageResponse> reorderImages(Long productId, List<Long> orderedImageIds) {
+        repo.findByIdAndDeletedFalse(productId)
+                .orElseThrow(() -> new EntityNotFoundException("Produit introuvable"));
+
+        List<ProductImage> imgs = imageRepo.findByProductIdOrderByPositionAsc(productId);
+        if (imgs.isEmpty()) return List.of();
+
+        Map<Long, ProductImage> map = imgs.stream()
+                .collect(Collectors.toMap(ProductImage::getId, x -> x));
+
+        int pos = 0;
+        for (Long id : orderedImageIds) {
+            ProductImage img = map.get(id);
+            if (img != null) img.setPosition(pos++);
+        }
+
+        // ceux non listés => à la fin
+        for (ProductImage img : imgs) {
+            if (!orderedImageIds.contains(img.getId())) {
+                img.setPosition(pos++);
+            }
+        }
+
+        imageRepo.saveAll(imgs);
+
+        // on renvoie trié
+        List<ProductImage> sorted = imageRepo.findByProductIdOrderByPositionAsc(productId);
+        return sorted.stream().map(this::toImageDto).toList();
+    }
+
     // =========================
     // ✅ DTO MAPPING
     // =========================
     private ProductResponse toDto(Product p) {
+
         List<ProductImage> imgs = imageRepo.findByProductIdOrderByPositionAsc(p.getId());
         List<String> urls = imgs.stream().map(ProductImage::getUrl).toList();
 
@@ -408,11 +446,18 @@ public class ProductService {
                 .slug(p.getSlug())
                 .description(p.getDescription())
                 .price(p.getPrice())
+
+                .promoPrice(p.getPromoPrice())
+                .promoStartAt(toLocalDateUtc(p.getPromoStartAt()))
+                .promoEndAt(toLocalDateUtc(p.getPromoEndAt()))
+
                 .currency(p.getCurrency())
                 .weightGrams(p.getWeightGrams())
                 .isActive(p.getIsActive())
+
                 .imageUrls(urls)
                 .images(imgs.stream().map(this::toImageDto).toList())
+
                 .stockQuantity(p.getStockQuantity())
                 .segmentCategoryId(segmentCatId)
                 .typeCategoryId(typeCatId)
@@ -429,5 +474,67 @@ public class ProductService {
                 .position(img.getPosition())
                 .isPrimary(img.getPrimary())
                 .build();
+    }
+
+    // =========================
+    // ✅ HELPERS
+    // =========================
+    private BigDecimal safeMoney(BigDecimal v) {
+        if (v == null) return BigDecimal.ZERO;
+        return v.max(BigDecimal.ZERO);
+    }
+
+    private void ensurePrimaryImage(Product p) {
+        if (p.getImages() == null || p.getImages().isEmpty()) return;
+
+        boolean hasPrimary = p.getImages().stream().anyMatch(im -> Boolean.TRUE.equals(im.getPrimary()));
+        if (!hasPrimary) {
+            ProductImage first = p.getImages().stream()
+                    .min(Comparator.comparingInt(im -> im.getPosition() == null ? 999999 : im.getPosition()))
+                    .orElse(null);
+            if (first != null) first.setPrimary(true);
+        }
+    }
+
+    /**
+     * Nettoie/corrige la promo :
+     * - promoPrice null/0 => on supprime start/end
+     * - start/end inversées => swap
+     */
+    private void normalizePromo(ProductCreateRequest req) {
+        if (req == null) return;
+
+        BigDecimal promo = req.getPromoPrice();
+        if (promo == null || promo.compareTo(BigDecimal.ZERO) <= 0) {
+            req.setPromoPrice(null);
+            req.setPromoStartAt(null);
+            req.setPromoEndAt(null);
+            return;
+        }
+
+        req.setPromoPrice(promo.max(BigDecimal.ZERO));
+
+        LocalDate start = req.getPromoStartAt();
+        LocalDate end = req.getPromoEndAt();
+
+        if (start != null && end != null && end.isBefore(start)) {
+            req.setPromoStartAt(end);
+            req.setPromoEndAt(start);
+        }
+    }
+
+    // =========================
+    // ✅ DATE CONVERSIONS (Option B)
+    // =========================
+    private Instant startOfDayUtc(LocalDate d) {
+        return d == null ? null : d.atStartOfDay(ZoneOffset.UTC).toInstant();
+    }
+
+    private Instant endOfDayUtc(LocalDate d) {
+        return d == null ? null : d.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().minusMillis(1);
+    }
+
+    private LocalDate toLocalDateUtc(Instant i) {
+        return i == null ? null : i.atZone(ZoneOffset.UTC).toLocalDate();
     }
 }

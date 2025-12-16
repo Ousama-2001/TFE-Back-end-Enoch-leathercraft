@@ -1,9 +1,9 @@
-// src/main/java/com/enoch/leathercraft/dto/ProductCreateRequest.java
 package com.enoch.leathercraft.dto;
 
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Getter
 @Setter
@@ -23,10 +23,12 @@ public class ProductCreateRequest {
     private Boolean isActive;
     private Integer stockQuantity;
 
-    // 🔥 Catégories choisies dans le back-office
-    // segment = homme / femme / petite-maroquinerie
-    private Long segmentCategoryId;
+    // ✅ PROMO (DATE SEULEMENT)
+    private BigDecimal promoPrice;
+    private LocalDate promoStartAt; // yyyy-MM-dd
+    private LocalDate promoEndAt;   // yyyy-MM-dd
 
-    // type = sacs-sacoches / ceintures / portefeuilles...
+    // 🔥 Catégories
+    private Long segmentCategoryId;
     private Long typeCategoryId;
 }

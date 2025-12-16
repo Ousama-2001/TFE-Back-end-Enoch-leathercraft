@@ -42,6 +42,11 @@ public class MailService {
             return;
         }
 
+        if (to == null || to.isBlank()) {
+            log.warn("📧 Destinataire vide. Mail ignoré.");
+            return;
+        }
+
         try {
             SimpleMailMessage msg = new SimpleMailMessage();
             msg.setTo(to);
@@ -54,6 +59,28 @@ public class MailService {
         } catch (Exception e) {
             log.error("❌ Erreur lors de l’envoi d’un email à {} : {}", to, e.getMessage());
         }
+    }
+
+    // ==================== ✅ WELCOME EMAIL (NEW) =======================
+    public void sendWelcomeEmail(String to, String firstName) {
+        String displayName = (firstName != null && !firstName.isBlank()) ? firstName.trim() : "👋";
+
+        String text = """
+                Bonjour %s,
+
+                Bienvenue sur Enoch Leathercraft Shop ✨
+                Votre compte a été créé avec succès.
+
+                Vous pouvez maintenant :
+                - parcourir le catalogue,
+                - ajouter des articles à votre wishlist,
+                - passer commande en toute sécurité.
+
+                Merci de votre confiance,
+                Enoch Leathercraft
+                """.formatted(displayName);
+
+        sendSimpleMail(to, "Bienvenue sur Enoch Leathercraft ✨", text);
     }
 
     // ==================== PASSWORD RESET =======================
@@ -83,6 +110,58 @@ public class MailService {
                 """;
 
         sendSimpleMail(to, "Votre mot de passe a été modifié", text);
+    }
+
+    // ==================== ✅ EMAIL CHANGE =======================
+    public void sendEmailChangeConfirmLink(String toNewEmail, String confirmLink) {
+        String text = """
+                Bonjour,
+
+                Vous avez demandé à changer l'adresse email associée à votre compte Enoch Leathercraft.
+
+                Pour confirmer votre nouvel email, cliquez sur ce lien :
+                %s
+
+                Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
+
+                Enoch Leathercraft
+                """.formatted(confirmLink);
+
+        sendSimpleMail(toNewEmail, "Confirmez votre nouvel email", text);
+    }
+
+    public void sendEmailChangedEmail(String oldEmail, String newEmail) {
+
+        String oldEmailText = """
+            Bonjour,
+
+            L'adresse email associée à votre compte Enoch Leathercraft a été MODIFIÉE.
+
+            Ancien email : %s
+            Nouvel email : %s
+
+            ⚠️ Si vous n'êtes PAS à l'origine de ce changement,
+            contactez immédiatement notre support.
+
+            Enoch Leathercraft – Sécurité
+            """.formatted(oldEmail, newEmail);
+
+        sendSimpleMail(oldEmail, "⚠️ Changement d'email sur votre compte", oldEmailText);
+
+        String newEmailText = """
+            Bonjour,
+
+            Votre adresse email a bien été mise à jour avec succès.
+
+            Nouvel email associé à votre compte :
+            %s
+
+            Bienvenue sur Enoch Leathercraft ✨
+
+            Enoch Leathercraft
+            """.formatted(newEmail);
+
+        sendSimpleMail(newEmail, "Votre email a été mis à jour", newEmailText);
     }
 
     // ==================== ORDER CONFIRMATION =======================
@@ -145,9 +224,23 @@ public class MailService {
 
     // =============== DEMANDE RÉACTIVATION COMPTE ===============
     public void sendReactivationRequestEmailToAdmin(String userEmail, String message) {
+        if (!mailEnabled) {
+            log.warn("📧 Envoi email réactivation désactivé");
+            return;
+        }
+
+        String adminTo = (superAdminEmail != null && !superAdminEmail.isBlank())
+                ? superAdminEmail
+                : null;
+
+        if (adminTo == null) {
+            log.warn("Aucun super admin email configuré (app.superadmin.email). Mail réactivation ignoré.");
+            return;
+        }
+
         try {
             SimpleMailMessage msg = new SimpleMailMessage();
-            msg.setTo("saidenoch@gmail.com");
+            msg.setTo(adminTo);
             msg.setFrom(from);
             msg.setSubject("🔔 [Enoch] Demande de réactivation de compte");
 
@@ -236,7 +329,6 @@ public class MailService {
         }
     }
 
-    // =============== 🔥 RETOUR ACCEPTÉ (client) ===============
     public void sendReturnApprovedToCustomer(Order order) {
         String subject = "Retour accepté – commande " + safe(order.getReference());
 
@@ -265,7 +357,6 @@ public class MailService {
         sendSimpleMail(order.getCustomerEmail(), subject, body);
     }
 
-    // =============== 🔥 RETOUR REFUSÉ (client) ===============
     public void sendReturnRejectedToCustomer(Order order, String adminReason) {
         String subject = "Retour refusé – commande " + safe(order.getReference());
 
@@ -292,7 +383,6 @@ public class MailService {
         sendSimpleMail(order.getCustomerEmail(), subject, body);
     }
 
-    // =============== 💸 COMMANDE PAYÉE ANNULÉE (client) ===============
     public void sendPaidOrderCancelledToCustomer(Order order) {
         String subject = "Commande annulée – " + safe(order.getReference());
 
@@ -320,7 +410,6 @@ public class MailService {
         sendSimpleMail(order.getCustomerEmail(), subject, body);
     }
 
-    // =============== 💸 COMMANDE PAYÉE ANNULÉE (admins) ===============
     public void sendPaidOrderCancelledToAdmins(Order order) {
         try {
             List<User> admins = userRepository.findByRoleInAndDeletedFalse(
@@ -378,19 +467,19 @@ public class MailService {
                     order.getReference(), e.getMessage());
         }
     }
-    // Contact le support
-    public void sendContactEmail(
-            String name,
-            String email,
-            String message
-    ) {
+
+    public void sendContactEmail(String name, String email, String message) {
         if (!mailEnabled) {
             log.warn("📧 Envoi email contact désactivé");
             return;
         }
 
+        if (superAdminEmail == null || superAdminEmail.isBlank()) {
+            log.warn("Aucun super admin email configuré (app.superadmin.email). Mail contact admin ignoré.");
+            return;
+        }
+
         try {
-            // ===== MAIL ADMIN =====
             SimpleMailMessage adminMsg = new SimpleMailMessage();
             adminMsg.setTo(superAdminEmail);
             adminMsg.setFrom(from);
@@ -410,7 +499,6 @@ public class MailService {
 
             mailSender.send(adminMsg);
 
-            // ===== ACCUSÉ CLIENT =====
             SimpleMailMessage userMsg = new SimpleMailMessage();
             userMsg.setTo(email);
             userMsg.setFrom(from);
@@ -434,7 +522,6 @@ public class MailService {
         }
     }
 
-    // ==================== UTILS =======================
     private String safe(String v) {
         return v != null ? v : "";
     }

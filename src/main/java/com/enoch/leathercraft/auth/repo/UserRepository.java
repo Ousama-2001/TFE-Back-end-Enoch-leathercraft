@@ -11,16 +11,21 @@ import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
+    // ✅ Ignore-case (Spring Data génère LOWER(...) automatiquement)
+    Optional<User> findByEmailIgnoreCase(String email);
+    Optional<User> findByUsernameIgnoreCase(String username);
+
+    boolean existsByEmailIgnoreCase(String email);
+    boolean existsByUsernameIgnoreCase(String username);
+
+    // Tu peux garder ceux-ci si tu veux, mais évite de les utiliser pour l’auth
     Optional<User> findByEmail(String email);
-
     Optional<User> findByUsername(String username);
-
     boolean existsByEmail(String email);
-
     boolean existsByUsername(String username);
 
     Optional<User> findByEmailAndDeletedFalse(String email);
 
-    // 🔥 NOUVEAU : récupérer tous les ADMIN / SUPER_ADMIN non supprimés
+    // 🔥 récupérer tous les ADMIN / SUPER_ADMIN non supprimés
     List<User> findByRoleInAndDeletedFalse(Collection<Role> roles);
 }

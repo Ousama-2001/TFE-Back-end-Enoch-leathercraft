@@ -8,10 +8,10 @@ import com.enoch.leathercraft.auth.dto.AuthResponse;
 import com.enoch.leathercraft.auth.dto.RegisterRequest;
 import com.enoch.leathercraft.auth.repo.UserRepository;
 import com.enoch.leathercraft.auth.service.AuthService;
-import com.enoch.leathercraft.validator.PasswordValidator;
 import com.enoch.leathercraft.services.MailService;
 import com.enoch.leathercraft.auth.repo.PasswordResetTokenRepository;
 import com.enoch.leathercraft.superadmin.service.SuperAdminRequestService;
+import com.enoch.leathercraft.validator.PasswordValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -72,7 +72,9 @@ public class AuthController {
             return ResponseEntity.badRequest().body("Email requis.");
         }
 
-        Optional<User> userOpt = userRepository.findByEmail(email);
+        String normalized = email.trim().toLowerCase();
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(normalized);
+
         if (userOpt.isEmpty()) {
             // Ne pas révéler si l'email existe ou pas
             return ResponseEntity.ok().build();
@@ -111,12 +113,10 @@ public class AuthController {
         User user = token.getUser();
 
         if (!PasswordValidator.isStrongPassword(newPassword)) {
-            return ResponseEntity.badRequest()
-                    .body("Mot de passe trop faible.");
+            return ResponseEntity.badRequest().body("Mot de passe trop faible.");
         }
         if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
-            return ResponseEntity.badRequest()
-                    .body("Le nouveau mot de passe doit être différent de l'ancien.");
+            return ResponseEntity.badRequest().body("Le nouveau mot de passe doit être différent de l'ancien.");
         }
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
@@ -129,7 +129,6 @@ public class AuthController {
     }
 
     // =============== DEMANDE DE RÉACTIVATION ===============
-
     @PostMapping("/reactivation-request")
     public ResponseEntity<?> requestReactivation(@RequestBody Map<String, String> payload) {
 
@@ -149,6 +148,29 @@ public class AuthController {
         return ResponseEntity.ok("REQUEST_SENT");
     }
 
+    // ✅ Disponibilité pseudo (CASE-INSENSITIVE)
+    @GetMapping("/availability/username")
+    public ResponseEntity<Map<String, Boolean>> isUsernameAvailable(@RequestParam String username) {
+        if (username == null || username.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("available", false));
+        }
+
+        String normalized = username.trim().toLowerCase();
+        boolean available = !userRepository.existsByUsernameIgnoreCase(normalized);
+
+        return ResponseEntity.ok(Map.of("available", available));
+    }
+
+    // ✅ Disponibilité email (CASE-INSENSITIVE)
+    @GetMapping("/availability/email")
+    public ResponseEntity<Map<String, Boolean>> isEmailAvailable(@RequestParam String email) {
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("available", false));
+        }
+
+        String normalized = email.trim().toLowerCase();
+        boolean available = !userRepository.existsByEmailIgnoreCase(normalized);
+
+        return ResponseEntity.ok(Map.of("available", available));
+    }
 }
-
-
