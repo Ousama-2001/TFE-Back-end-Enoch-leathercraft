@@ -66,7 +66,6 @@ public class CatalogService {
                 .id(p.getId())
                 .sku(p.getSku())
                 .name(p.getName())
-                .slug(p.getSlug())
                 .description(p.getDescription())
                 .price(p.getPrice())
                 .currency(p.getCurrency())

@@ -28,8 +28,7 @@ public class Product {
     @Column(nullable = false, length = 200)
     private String name;
 
-    @Column(unique = true, length = 180)
-    private String slug;
+
 
     // ✅ MODIFICATION : Limite à 1000 caractères (environ 150 mots)
     @Column(length = 1000)
@@ -64,8 +63,6 @@ public class Product {
     private Instant promoStartAt;
     private Instant promoEndAt;
 
-    @Column(length = 40)
-    private String promoCode;
 
     // 🔥 IMAGES
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)

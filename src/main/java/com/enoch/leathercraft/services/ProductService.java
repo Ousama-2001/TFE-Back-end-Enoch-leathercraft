@@ -82,7 +82,6 @@ public class ProductService {
         Product p = Product.builder()
                 .sku(req.getSku())
                 .name(req.getName())
-                .slug(req.getSlug())
                 .description(req.getDescription())
                 .material(req.getMaterial())
 
@@ -137,7 +136,6 @@ public class ProductService {
 
         existing.setSku(req.getSku());
         existing.setName(req.getName());
-        existing.setSlug(req.getSlug());
         existing.setDescription(req.getDescription());
         existing.setMaterial(req.getMaterial());
 
@@ -443,7 +441,6 @@ public class ProductService {
                 .id(p.getId())
                 .sku(p.getSku())
                 .name(p.getName())
-                .slug(p.getSlug())
                 .description(p.getDescription())
                 .price(p.getPrice())
 

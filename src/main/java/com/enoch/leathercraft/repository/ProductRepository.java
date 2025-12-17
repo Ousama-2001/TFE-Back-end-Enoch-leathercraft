@@ -12,7 +12,6 @@ import java.util.Optional;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
-    Optional<Product> findBySlug(String slug);
 
     // Charge toujours les images
     @Override
